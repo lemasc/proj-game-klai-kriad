@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Punch Detection Sensor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        h1 {
+            margin-bottom: 30px;
+            font-size: 2em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        .status {
+            font-size: 1.2em;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        
+        .status.disconnected {
+            background: rgba(255, 0, 0, 0.3);
+            border: 2px solid #ff4444;
+        }
+        
+        .status.connecting {
+            background: rgba(255, 165, 0, 0.3);
+            border: 2px solid #ffa500;
+        }
+        
+        .status.connected {
+            background: rgba(0, 255, 0, 0.3);
+            border: 2px solid #44ff44;
+        }
+        
+        .start-button {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 20px 0;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        .start-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        }
+        
+        .start-button:active {
+            transform: translateY(0);
+        }
+        
+        .start-button:disabled {
+            background: rgba(128, 128, 128, 0.5);
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ffeb3b;
+        }
+        
+        .metric-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+        
+        .instructions {
+            text-align: left;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin: 5px 0;
+        }
+        
+        .ip-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1em;
+        }
+        
+        .ip-input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .punch-indicator {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 20px auto;
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            transition: all 0.3s ease;
+        }
+        
+        .punch-indicator.punching {
+            background: radial-gradient(circle, #ff6b6b, #ff8e8e);
+            border-color: #ff6b6b;
+            transform: scale(1.2);
+            box-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🥊 Punch Sensor</h1>
+        
+        <div class="instructions">
+            <strong>Setup Instructions:</strong>
+            <ol>
+                <li>Enter your computer's IP address below</li>
+                <li>Make sure your phone and computer are on the same WiFi</li>
+                <li>Click "Start Tracking" to begin</li>
+                <li>Hold phone firmly and start punching!</li>
+            </ol>
+        </div>
+        
+        <input type="text" 
+               id="serverIP" 
+               class="ip-input" 
+               placeholder="Computer IP (e.g., 192.168.1.100)"
+        >
+        
+        <div id="status" class="status disconnected">
+            Ready to Connect
+        </div>
+        
+        <button id="startButton" class="start-button">
+            Start Tracking
+        </button>
+        
+        <div class="punch-indicator" id="punchIndicator">
+            👊
+        </div>
+        
+        <div class="metrics" id="metrics" style="display: none;">
+            <div class="metric-card">
+                <div class="metric-value" id="accelValue">0.0</div>
+                <div class="metric-label">Acceleration</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="punchCount">0</div>
+                <div class="metric-label">Punches Sent</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="gameScore">0</div>
+                <div class="metric-label">Game Score</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="connectionStatus">❌</div>
+                <div class="metric-label">Connected</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PunchSensor {
+            constructor() {
+                this.isTracking = false;
+                this.serverIP = '';
+                this.serverURL = '';
+                this.punchCount = 0;
+                this.lastPunchTime = 0;
+                this.punchCooldown = 500; // ms
+                
+                // UI elements
+                this.statusDiv = document.getElementById('status');
+                this.startButton = document.getElementById('startButton');
+                this.metricsDiv = document.getElementById('metrics');
+                this.serverIPInput = document.getElementById('serverIP');
+                this.punchIndicator = document.getElementById('punchIndicator');
+                
+                // Metric displays
+                this.accelValueSpan = document.getElementById('accelValue');
+                this.punchCountSpan = document.getElementById('punchCount');
+                this.gameScoreSpan = document.getElementById('gameScore');
+                this.connectionStatusSpan = document.getElementById('connectionStatus');
+                
+                this.setupEventListeners();
+                this.loadSavedIP();
+                
+                // Start status checking
+                setInterval(() => this.checkGameStatus(), 2000);
+            }
+            
+            setupEventListeners() {
+                this.startButton.addEventListener('click', () => this.toggleTracking());
+                
+                // Save IP when changed
+                this.serverIPInput.addEventListener('input', () => {
+                    localStorage.setItem('punchSensorIP', this.serverIPInput.value);
+                });
+            }
+            
+            loadSavedIP() {
+                const savedIP = localStorage.getItem('punchSensorIP');
+                if (savedIP) {
+                    this.serverIPInput.value = savedIP;
+                }
+            }
+            
+            updateStatus(message, className) {
+                this.statusDiv.textContent = message;
+                this.statusDiv.className = `status ${className}`;
+            }
+            
+            async toggleTracking() {
+                if (!this.isTracking) {
+                    await this.startTracking();
+                } else {
+                    this.stopTracking();
+                }
+            }
+            
+            async startTracking() {
+                this.serverIP = this.serverIPInput.value.trim();
+
+                if (!this.serverIP && !confirm("Use same address as this web page?")) {
+                    return;
+                }                
+                
+                this.serverURL = this.serverIP ? `http://${this.serverIP}:5000` : window.location.origin;
+                
+                this.updateStatus('Requesting permissions...', 'connecting');
+                
+                try {
+                    // Request device motion permission (iOS 13+)
+                    if (typeof DeviceMotionEvent !== 'undefined' && 
+                        typeof DeviceMotionEvent.requestPermission === 'function') {
+                        
+                        const permission = await DeviceMotionEvent.requestPermission();
+                        if (permission !== 'granted') {
+                            this.updateStatus('Permission denied', 'disconnected');
+                            return;
+                        }
+                    }
+                    
+                    // Test connection to server
+                    this.updateStatus('Testing connection...', 'connecting');
+                    const testResponse = await fetch(`${this.serverURL}/status`);
+                    if (!testResponse.ok) {
+                        throw new Error('Server not reachable');
+                    }
+                    
+                    // Start motion tracking
+                    window.addEventListener('devicemotion', this.handleMotion.bind(this));
+                    
+                    this.isTracking = true;
+                    this.startButton.textContent = 'Stop Tracking';
+                    this.updateStatus('Connected & Tracking', 'connected');
+                    this.metricsDiv.style.display = 'grid';
+                    this.connectionStatusSpan.textContent = '✅';
+                    
+                } catch (error) {
+                    console.error('Error starting tracking:', error);
+                    this.updateStatus('Connection failed - Check IP', 'disconnected');
+                }
+            }
+            
+            stopTracking() {
+                window.removeEventListener('devicemotion', this.handleMotion.bind(this));
+                this.isTracking = false;
+                this.startButton.textContent = 'Start Tracking';
+                this.updateStatus('Disconnected', 'disconnected');
+                this.metricsDiv.style.display = 'none';
+                this.connectionStatusSpan.textContent = '❌';
+            }
+            
+            async handleMotion(event) {
+                if (!this.isTracking) return;
+                
+                const accel = event.accelerationIncludingGravity || event.acceleration;
+                const gyro = event.rotationRate || {};
+                
+                if (!accel) return;
+                
+                const currentTime = Date.now();
+                
+                // Calculate acceleration magnitude
+                const magnitude = Math.sqrt(
+                    (accel.x || 0) ** 2 + 
+                    (accel.y || 0) ** 2 + 
+                    (accel.z || 0) ** 2
+                );
+                
+                // Update UI
+                this.accelValueSpan.textContent = magnitude.toFixed(1);
+                
+                // Detect potential punch (high acceleration)
+                const isPotentialPunch = magnitude > 20;
+                
+                if (isPotentialPunch && currentTime - this.lastPunchTime > this.punchCooldown) {
+                    this.showPunchEffect();
+                    this.lastPunchTime = currentTime;
+                }
+                
+                // Prepare data to send
+                const sensorData = {
+                    timestamp: currentTime,
+                    x: accel.x || 0,
+                    y: accel.y || 0,
+                    z: accel.z || 0,
+                    gx: gyro.alpha || 0,
+                    gy: gyro.beta || 0,
+                    gz: gyro.gamma || 0,
+                    magnitude: magnitude
+                };
+                
+                // Send data to server
+                try {
+                    const response = await fetch(`${this.serverURL}/sensor`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(sensorData)
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.status === 'ok') {
+                            this.punchCount++;
+                            this.punchCountSpan.textContent = this.punchCount;
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('Error sending sensor data:', error);
+                    // Don't spam error messages, just log
+                }
+            }
+            
+            showPunchEffect() {
+                this.punchIndicator.classList.add('punching');
+                setTimeout(() => {
+                    this.punchIndicator.classList.remove('punching');
+                }, 300);
+            }
+            
+            async checkGameStatus() {
+                if (!this.isTracking || !this.serverIP) return;
+                
+                try {
+                    const response = await fetch(`http://${this.serverIP}:5000/status`);
+                    if (response.ok) {
+                        const status = await response.json();
+                        this.gameScoreSpan.textContent = status.score || 0;
+                        this.connectionStatusSpan.textContent = '✅';
+                    }
+                } catch (error) {
+                    this.connectionStatusSpan.textContent = '❌';
+                }
+            }
+        }
+        
+        // Initialize the sensor when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PunchSensor();
+        });
+    </script>
+</body>
+</html>
