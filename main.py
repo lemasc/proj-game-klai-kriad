@@ -5,7 +5,8 @@ import threading
 import queue
 import time
 import json
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit
 from collections import deque
 import math
 
@@ -49,44 +50,58 @@ class PunchDetectionGame:
         print("Open the smartphone web interface to connect accelerometer")
     
     def start_sensor_server(self):
-        """Start Flask server to receive sensor data from smartphone"""
+        """Start Flask-SocketIO server to receive sensor data from smartphone via WebSocket"""
         app = Flask(__name__)
+        app.config['SECRET_KEY'] = 'punch-detection-secret'
         app.logger.disabled = True  # Disable Flask logs
-        
-        @app.route('/sensor', methods=['POST'])
-        def receive_sensor_data():
-            try:
-                data = request.json
-                if data:
-                    # Add timestamp if not present
-                    if 'timestamp' not in data:
-                        data['timestamp'] = time.time() * 1000
-                    
-                    self.sensor_queue.put(data)
-                    return jsonify({'status': 'ok', 'queue_size': self.sensor_queue.qsize()})
-            except Exception as e:
-                print(f"Error receiving sensor data: {e}")
-                return jsonify({'status': 'error'}), 400
-            
-            return jsonify({'status': 'ok'})
-        
-        @app.route('/status', methods=['GET'])
-        def get_status():
-            return jsonify({
+
+        self.socketio = SocketIO(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
+
+        @self.socketio.on('connect')
+        def handle_connect():
+            print(f"Client connected: {request.sid}")
+            emit('status', {
                 'connected': True,
                 'score': self.score,
                 'punches': self.punch_count,
                 'combo': self.combo_count
             })
-        
+
+        @self.socketio.on('disconnect')
+        def handle_disconnect():
+            print(f"Client disconnected: {request.sid}")
+
+        @self.socketio.on('sensor_data')
+        def handle_sensor_data(data):
+            try:
+                if data:
+                    # Add timestamp if not present
+                    if 'timestamp' not in data:
+                        data['timestamp'] = time.time() * 1000
+
+                    self.sensor_queue.put(data)
+                    emit('sensor_ack', {'status': 'ok', 'queue_size': self.sensor_queue.qsize()})
+            except Exception as e:
+                print(f"Error receiving sensor data: {e}")
+                emit('sensor_ack', {'status': 'error'})
+
+        @self.socketio.on('get_status')
+        def handle_get_status():
+            emit('status', {
+                'connected': True,
+                'score': self.score,
+                'punches': self.punch_count,
+                'combo': self.combo_count
+            })
+
         @app.route('/')
         def index():
             return render_template('index.html')
-        
+
         # Start server in background thread
         def run_server():
-            app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-        
+            self.socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
     
@@ -235,6 +250,15 @@ class PunchDetectionGame:
         self.last_punch_time = timestamp
         
         print(f"PUNCH! Score: +{points}, Total: {self.score}, Combo: {self.combo_count}")
+
+        # Broadcast updated game state to connected clients
+        if hasattr(self, 'socketio'):
+            self.socketio.emit('game_update', {
+                'score': self.score,
+                'punches': self.punch_count,
+                'combo': self.combo_count,
+                'last_punch_score': points
+            })
     
     def draw_game_ui(self, image):
         """Draw game UI elements on the image"""

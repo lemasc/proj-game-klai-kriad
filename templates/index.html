@@ -218,6 +218,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script>
         class PunchSensor {
             constructor() {
@@ -227,27 +228,61 @@
                 this.punchCount = 0;
                 this.lastPunchTime = 0;
                 this.punchCooldown = 500; // ms
-                
+                this.socket = null;
+
                 // UI elements
                 this.statusDiv = document.getElementById('status');
                 this.startButton = document.getElementById('startButton');
                 this.metricsDiv = document.getElementById('metrics');
                 this.serverIPInput = document.getElementById('serverIP');
                 this.punchIndicator = document.getElementById('punchIndicator');
-                
+
                 // Metric displays
                 this.accelValueSpan = document.getElementById('accelValue');
                 this.punchCountSpan = document.getElementById('punchCount');
                 this.gameScoreSpan = document.getElementById('gameScore');
                 this.connectionStatusSpan = document.getElementById('connectionStatus');
-                
+
                 this.setupEventListeners();
                 this.loadSavedIP();
-                
-                // Start status checking
-                setInterval(() => this.checkGameStatus(), 2000);
             }
-            
+
+            setupSocketEvents() {
+                if (!this.socket) return;
+
+                this.socket.on('connect', () => {
+                    console.log('WebSocket connected');
+                    this.updateStatus('Connected & Tracking', 'connected');
+                    this.connectionStatusSpan.textContent = '✅';
+                });
+
+                this.socket.on('disconnect', () => {
+                    console.log('WebSocket disconnected');
+                    this.updateStatus('Disconnected', 'disconnected');
+                    this.connectionStatusSpan.textContent = '❌';
+                });
+
+                this.socket.on('status', (data) => {
+                    this.gameScoreSpan.textContent = data.score || 0;
+                });
+
+                this.socket.on('game_update', (data) => {
+                    this.gameScoreSpan.textContent = data.score || 0;
+                });
+
+                this.socket.on('sensor_ack', (data) => {
+                    if (data.status === 'ok') {
+                        this.punchCount++;
+                        this.punchCountSpan.textContent = this.punchCount;
+                    }
+                });
+
+                this.socket.on('connect_error', (error) => {
+                    console.error('WebSocket connection error:', error);
+                    this.updateStatus('Connection failed - Check IP', 'disconnected');
+                });
+            }
+
             setupEventListeners() {
                 this.startButton.addEventListener('click', () => this.toggleTracking());
                 
@@ -282,48 +317,67 @@
 
                 if (!this.serverIP && !confirm("Use same address as this web page?")) {
                     return;
-                }                
-                
+                }
+
                 this.serverURL = this.serverIP ? `http://${this.serverIP}:5000` : window.location.origin;
-                
+
                 this.updateStatus('Requesting permissions...', 'connecting');
-                
+
                 try {
                     // Request device motion permission (iOS 13+)
-                    if (typeof DeviceMotionEvent !== 'undefined' && 
+                    if (typeof DeviceMotionEvent !== 'undefined' &&
                         typeof DeviceMotionEvent.requestPermission === 'function') {
-                        
+
                         const permission = await DeviceMotionEvent.requestPermission();
                         if (permission !== 'granted') {
                             this.updateStatus('Permission denied', 'disconnected');
                             return;
                         }
                     }
-                    
-                    // Test connection to server
-                    this.updateStatus('Testing connection...', 'connecting');
-                    const testResponse = await fetch(`${this.serverURL}/status`);
-                    if (!testResponse.ok) {
-                        throw new Error('Server not reachable');
-                    }
-                    
+
+                    // Connect WebSocket
+                    this.updateStatus('Connecting to server...', 'connecting');
+                    this.socket = io(this.serverURL);
+                    this.setupSocketEvents();
+
+                    // Wait for connection
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => reject(new Error('Connection timeout')), 5000);
+                        this.socket.on('connect', () => {
+                            clearTimeout(timeout);
+                            resolve();
+                        });
+                        this.socket.on('connect_error', (error) => {
+                            clearTimeout(timeout);
+                            reject(error);
+                        });
+                    });
+
                     // Start motion tracking
                     window.addEventListener('devicemotion', this.handleMotion.bind(this));
-                    
+
                     this.isTracking = true;
                     this.startButton.textContent = 'Stop Tracking';
-                    this.updateStatus('Connected & Tracking', 'connected');
                     this.metricsDiv.style.display = 'grid';
-                    this.connectionStatusSpan.textContent = '✅';
-                    
+
                 } catch (error) {
                     console.error('Error starting tracking:', error);
                     this.updateStatus('Connection failed - Check IP', 'disconnected');
+                    if (this.socket) {
+                        this.socket.disconnect();
+                        this.socket = null;
+                    }
                 }
             }
             
             stopTracking() {
                 window.removeEventListener('devicemotion', this.handleMotion.bind(this));
+
+                if (this.socket) {
+                    this.socket.disconnect();
+                    this.socket = null;
+                }
+
                 this.isTracking = false;
                 this.startButton.textContent = 'Start Tracking';
                 this.updateStatus('Disconnected', 'disconnected');
@@ -331,35 +385,35 @@
                 this.connectionStatusSpan.textContent = '❌';
             }
             
-            async handleMotion(event) {
-                if (!this.isTracking) return;
-                
+            handleMotion(event) {
+                if (!this.isTracking || !this.socket) return;
+
                 const accel = event.accelerationIncludingGravity || event.acceleration;
                 const gyro = event.rotationRate || {};
-                
+
                 if (!accel) return;
-                
+
                 const currentTime = Date.now();
-                
+
                 // Calculate acceleration magnitude
                 const magnitude = Math.sqrt(
-                    (accel.x || 0) ** 2 + 
-                    (accel.y || 0) ** 2 + 
+                    (accel.x || 0) ** 2 +
+                    (accel.y || 0) ** 2 +
                     (accel.z || 0) ** 2
                 );
-                
+
                 // Update UI
                 this.accelValueSpan.textContent = magnitude.toFixed(1);
-                
+
                 // Detect potential punch (high acceleration)
                 const isPotentialPunch = magnitude > 20;
-                
+
                 if (isPotentialPunch && currentTime - this.lastPunchTime > this.punchCooldown) {
                     this.showPunchEffect();
                     this.lastPunchTime = currentTime;
                 }
-                
-                // Prepare data to send
+
+                // Prepare data to send via WebSocket
                 const sensorData = {
                     timestamp: currentTime,
                     x: accel.x || 0,
@@ -370,29 +424,9 @@
                     gz: gyro.gamma || 0,
                     magnitude: magnitude
                 };
-                
-                // Send data to server
-                try {
-                    const response = await fetch(`${this.serverURL}/sensor`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(sensorData)
-                    });
-                    
-                    if (response.ok) {
-                        const result = await response.json();
-                        if (result.status === 'ok') {
-                            this.punchCount++;
-                            this.punchCountSpan.textContent = this.punchCount;
-                        }
-                    }
-                    
-                } catch (error) {
-                    console.error('Error sending sensor data:', error);
-                    // Don't spam error messages, just log
-                }
+
+                // Send data via WebSocket
+                this.socket.emit('sensor_data', sensorData);
             }
             
             showPunchEffect() {
@@ -400,21 +434,6 @@
                 setTimeout(() => {
                     this.punchIndicator.classList.remove('punching');
                 }, 300);
-            }
-            
-            async checkGameStatus() {
-                if (!this.isTracking || !this.serverIP) return;
-                
-                try {
-                    const response = await fetch(`http://${this.serverIP}:5000/status`);
-                    if (response.ok) {
-                        const status = await response.json();
-                        this.gameScoreSpan.textContent = status.score || 0;
-                        this.connectionStatusSpan.textContent = '✅';
-                    }
-                } catch (error) {
-                    this.connectionStatusSpan.textContent = '❌';
-                }
             }
         }
         
