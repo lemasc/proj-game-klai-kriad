@@ -5,8 +5,7 @@ import threading
 import queue
 import time
 import json
-import websockets
-import asyncio
+from flask import Flask, request, jsonify, render_template
 from collections import deque
 import math
 
@@ -43,91 +42,52 @@ class PunchDetectionGame:
         # Visual elements
         self.punch_effect_timer = 0
         self.punch_effect_duration = 0.3
-
-        # WebSocket connection tracking
-        self.connected_clients = set()
-        self.connection_lock = threading.Lock()
         
-        print("Starting WebSocket sensor server...")
-        self.start_websocket_server()
-        print("WebSocket sensor server will start on port 5000")
-        print("Connect your smartphone app via WebSocket to ws://[IP]:5000")
+        print("Starting sensor server...")
+        self.start_sensor_server()
+        print("Sensor server started on port 5000")
+        print("Open the smartphone web interface to connect accelerometer")
     
-    def start_websocket_server(self):
-        """Start WebSocket server to receive sensor data from smartphone"""
-
-        async def handle_websocket(websocket):
-            """Handle WebSocket connections and messages"""
+    def start_sensor_server(self):
+        """Start Flask server to receive sensor data from smartphone"""
+        app = Flask(__name__)
+        app.logger.disabled = True  # Disable Flask logs
+        
+        @app.route('/sensor', methods=['POST'])
+        def receive_sensor_data():
             try:
-                print(f"New WebSocket connection from {websocket.remote_address}")
-
-                # Add client to connected set
-                with self.connection_lock:
-                    self.connected_clients.add(websocket)
-
-                async for message in websocket:
-                    try:
-                        data = json.loads(message)
-
-                        # Handle different message types
-                        if data.get('type') == 'sensor':
-                            # Add timestamp if not present
-                            if 'timestamp' not in data:
-                                data['timestamp'] = time.time() * 1000
-
-                            self.sensor_queue.put(data)
-
-                            # Send acknowledgment with current status
-                            response = {
-                                'type': 'ack',
-                                'status': 'ok',
-                                'queue_size': self.sensor_queue.qsize()
-                            }
-                            await websocket.send(json.dumps(response))
-
-                        elif data.get('type') == 'status_request':
-                            # Send current game status
-                            response = {
-                                'type': 'status',
-                                'connected': True,
-                                'score': self.score,
-                                'punches': self.punch_count,
-                                'combo': self.combo_count
-                            }
-                            await websocket.send(json.dumps(response))
-
-                    except json.JSONDecodeError:
-                        print(f"Invalid JSON received: {message}")
-                    except Exception as e:
-                        print(f"Error processing message: {e}")
-
-            except websockets.exceptions.ConnectionClosed:
-                print(f"WebSocket connection closed: {websocket.remote_address}")
+                data = request.json
+                if data:
+                    # Add timestamp if not present
+                    if 'timestamp' not in data:
+                        data['timestamp'] = time.time() * 1000
+                    
+                    self.sensor_queue.put(data)
+                    return jsonify({'status': 'ok', 'queue_size': self.sensor_queue.qsize()})
             except Exception as e:
-                print(f"WebSocket error: {e}")
-            finally:
-                # Remove client from connected set
-                with self.connection_lock:
-                    self.connected_clients.discard(websocket)
-
-        # Start WebSocket server in background thread
-        def run_websocket_server():
-            async def start_server_async():
-                server = await websockets.serve(
-                    handle_websocket,
-                    "0.0.0.0",
-                    5000,
-                    ping_interval=30,
-                    ping_timeout=10
-                )
-                print("WebSocket server started on port 5000")
-                await server.wait_closed()
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(start_server_async())
-
-        server_thread = threading.Thread(target=run_websocket_server, daemon=True)
+                print(f"Error receiving sensor data: {e}")
+                return jsonify({'status': 'error'}), 400
+            
+            return jsonify({'status': 'ok'})
+        
+        @app.route('/status', methods=['GET'])
+        def get_status():
+            return jsonify({
+                'connected': True,
+                'score': self.score,
+                'punches': self.punch_count,
+                'combo': self.combo_count
+            })
+        
+        @app.route('/')
+        def index():
+            return render_template('index.html')
+        
+        # Start server in background thread
+        def run_server():
+            app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        
+        server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
     
     def process_sensor_data(self):
@@ -298,15 +258,9 @@ class PunchDetectionGame:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, combo_color, 2)
         
         # Connection status
-        with self.connection_lock:
-            is_connected = len(self.connected_clients) > 0
-            client_count = len(self.connected_clients)
-
-        status_color = (0, 255, 0) if is_connected else (0, 0, 255)
-        if is_connected:
-            status_text = f"WebSocket: {client_count} client{'s' if client_count != 1 else ''}"
-        else:
-            status_text = "WebSocket: Disconnected"
+        sensor_data_available = not self.sensor_queue.empty() or len(self.sensor_data_buffer) > 0
+        status_color = (0, 255, 0) if sensor_data_available else (0, 0, 255)
+        status_text = "Sensor: Connected" if sensor_data_available else "Sensor: Disconnected"
         cv2.putText(image, status_text, (220, 40), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 2)
         
