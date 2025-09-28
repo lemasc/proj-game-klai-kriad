@@ -1,3 +1,5 @@
 .claude/*.local.json
 __pycache__/
 **/*.pyc
+*.env
+!.env.example

@@ -1,9 +1,10 @@
 import threading
 import time
-import queue
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import os
+from pyngrok import ngrok
+import qrcode
 
 
 class SensorServer:
@@ -34,8 +35,10 @@ class SensorServer:
         self._setup_routes()
         self._setup_socket_handlers()
 
-        # Server thread
+        # Server thread and ngrok tunnel
         self.server_thread = None
+        self.ngrok_tunnel = None
+        self.public_url = None
 
     def _setup_routes(self):
         """Setup Flask routes"""
@@ -86,6 +89,57 @@ class SensorServer:
                 'combo': game_state.get('combo_count', 0)
             })
 
+    def _setup_ngrok(self):
+        """Setup ngrok tunnel if enabled and auth token is available"""
+        if not getattr(self.config, 'ENABLE_NGROK', True):
+            return None
+
+        auth_token = getattr(self.config, 'NGROK_AUTH_TOKEN', None)
+        if not auth_token:
+            print("Warning: NGROK_AUTH_TOKEN not found in configuration. Ngrok tunneling disabled.")
+            print("To enable ngrok, add your auth token to .env file:")
+            print("NGROK_AUTH_TOKEN=your_token_here")
+            return None
+
+        try:
+            # Set auth token
+            ngrok.set_auth_token(auth_token)
+
+            # Create tunnel
+            tunnel = ngrok.connect(self.config.SERVER_PORT)
+            self.public_url = tunnel.public_url
+            print(f"Ngrok tunnel established: {self.public_url}")
+
+            # Generate and display QR code
+            self._display_qr_code(self.public_url)
+
+            return tunnel
+
+        except Exception as e:
+            print(f"Failed to setup ngrok tunnel: {e}")
+            print("Continuing with local server only...")
+            return None
+
+    def _display_qr_code(self, url):
+        """Generate and display QR code for the URL"""
+        try:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(url)
+            qr.make(fit=True)
+
+            # Print QR code to console
+            qr.print_ascii(invert=True)
+            print(f"\nScan the QR code above with your smartphone to connect!")
+            print(f"Or visit: {url}")
+
+        except Exception as e:
+            print(f"Failed to generate QR code: {e}")
+
     def start(self):
         """Start the sensor server in a background thread"""
         def run_server():
@@ -96,9 +150,18 @@ class SensorServer:
                 debug=False
             )
 
+        self.ngrok_tunnel = self._setup_ngrok()
+
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
-        print(f"Sensor server started on {self.config.SERVER_HOST}:{self.config.SERVER_PORT}")
+
+        local_url = f"http://{self.config.SERVER_HOST}:{self.config.SERVER_PORT}"
+        print(f"Sensor server started on {local_url}")
+
+        if self.public_url:
+            print(f"Public URL (via ngrok): {self.public_url}")
+        else:
+            print(f"Local access only: {local_url}")
 
     def emit_game_update(self, game_state):
         """Emit game state update to all connected clients"""
@@ -112,3 +175,21 @@ class SensorServer:
     def is_running(self):
         """Check if server thread is running"""
         return self.server_thread is not None and self.server_thread.is_alive()
+
+    def stop(self):
+        """Stop the server and cleanup ngrok tunnel"""
+        if self.ngrok_tunnel:
+            try:
+                ngrok.disconnect(self.ngrok_tunnel.public_url)
+                print("Ngrok tunnel closed")
+            except Exception as e:
+                print(f"Error closing ngrok tunnel: {e}")
+
+        if self.server_thread and self.server_thread.is_alive():
+            print("Stopping sensor server...")
+
+    def get_public_url(self):
+        """Get the public URL if ngrok is enabled, otherwise return local URL"""
+        if self.public_url:
+            return self.public_url
+        return f"http://{self.config.SERVER_HOST}:{self.config.SERVER_PORT}"

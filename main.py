@@ -2,6 +2,10 @@ import cv2
 import queue
 import time
 from collections import deque
+from dotenv import load_dotenv
+
+# Load environment variables at the start
+load_dotenv()
 
 # Import configuration modules
 from detection.detection_config import *
@@ -53,6 +57,8 @@ class PunchDetectionGame:
             FLASK_SECRET_KEY = FLASK_SECRET_KEY
             SERVER_HOST = SERVER_HOST
             SERVER_PORT = SERVER_PORT
+            ENABLE_NGROK = ENABLE_NGROK
+            NGROK_AUTH_TOKEN = NGROK_AUTH_TOKEN
 
         config = ServerConfig()
 

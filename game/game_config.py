@@ -1,6 +1,8 @@
 # Game Configuration Constants
 # These values control game mechanics, scoring, and user interface behavior
 
+import os
+
 # Combo System Settings
 COMBO_TIMEOUT = 2.0  # Seconds - Time window for consecutive punches to count as combo
 COMBO_BONUS_POINTS = 10  # Points added per combo level
@@ -36,3 +38,7 @@ CAMERA_INDEX = 0  # Default camera device index
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 5000
 FLASK_SECRET_KEY = 'punch-detection-secret'
+
+# Ngrok Settings
+ENABLE_NGROK = True  # Set to False to disable ngrok tunneling
+NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN')  # Loaded from .env file

@@ -54,9 +54,26 @@ ifconfig
 
 Look for "inet" under your WiFi interface (usually starts with 192.168.x.x)
 
-#### 2. Use an HTTPS tunnel (Workaround on iOS)
+#### 2. Use ngrok HTTPS tunnel (Recommended - iOS Compatible)
 
-If you are not on the same Wi-Fi, or facing with the "permission denied" on iOS, you can use an HTTPS tunnel software. `ngrok` is an easy one. Search for how to install and use it. The port to expose is `5000`.
+For the easiest setup, especially on iOS devices that require HTTPS, this project now includes automatic ngrok integration:
+
+1. **Get ngrok auth token**:
+   - Visit [ngrok.com](https://ngrok.com) and create a free account
+   - Go to [your auth token page](https://dashboard.ngrok.com/get-started/your-authtoken)
+   - Copy your auth token
+
+2. **Setup environment**:
+   - Copy the `.env.example` file to `.env`
+   - Add your ngrok auth token:
+   ```
+   NGROK_AUTH_TOKEN=your_token_here
+   ```
+
+3. **That's it!** When you run the game, it will automatically:
+   - Create a secure HTTPS tunnel
+   - Display a QR code for easy smartphone connection
+   - Show both local and public URLs
 
 ### Start the Game
 
@@ -64,22 +81,42 @@ If you are not on the same Wi-Fi, or facing with the "permission denied" on iOS,
 uv run main.py
 ```
 
-You should see:
+You should see something like:
 
 ```
 Starting sensor server...
-Sensor server started on port 5000
-Open the smartphone web interface to connect accelerometer
+Ngrok tunnel established: https://abc123.ngrok-free.app
+[QR CODE displayed here]
+
+Scan the QR code above with your smartphone to connect!
+Or visit: https://abc123.ngrok-free.app
+Sensor server started on http://0.0.0.0:5000
+Public URL (via ngrok): https://abc123.ngrok-free.app
 Starting Punch Detection Game...
+```
+
+If you didn't setup ngrok, you'll see:
+```
+Warning: NGROK_AUTH_TOKEN not found in .env file. Ngrok tunneling disabled.
+To enable ngrok, add your auth token to .env file:
+NGROK_AUTH_TOKEN=your_token_here
+Sensor server started on http://0.0.0.0:5000
+Local access only: http://0.0.0.0:5000
 ```
 
 ### Connect Your Smartphone
 
-1. Visit the web page on your phone's browser.
-   - For example, if your IP address is `192.168.1.100`, then visit Usually `http://192.168.100:5000`.
-   - If running with ngrok, then your URL will be something like `https://some-random-name.ngrok-free.app`.
-2. Tap "Start Tracking"
-3. Grant motion sensor permissions when prompted
+**With ngrok (Recommended)**:
+1. **Scan the QR code** displayed in the terminal, or
+2. Manually visit the HTTPS URL shown (e.g., `https://abc123.ngrok-free.app`)
+
+**Local network only**:
+1. Visit `http://your-computer-ip:5000` (e.g., `http://192.168.1.100:5000`)
+
+**Then**:
+1. Tap "Start Tracking" on the web interface
+2. Grant motion sensor permissions when prompted
+3. You should see "Connected & Tracking" status
 
 ## 🎮 How to Play
 
