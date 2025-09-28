@@ -77,17 +77,6 @@ class FusionDetector:
                 return strategy
         return None
 
-    def initialize_strategies(self) -> None:
-        """
-        Initialize all strategies by triggering setup event.
-        This should be called after all strategies are added.
-        """
-        self.event_manager.trigger_event('setup')
-
-    def cleanup_strategies(self) -> None:
-        """Clean up all strategies by triggering cleanup event."""
-        self.event_manager.trigger_event('cleanup')
-
     def detect_punch(self, pose_landmarks=None, sensor_data=None):
         """
         Main punch detection combining results from all active strategies.

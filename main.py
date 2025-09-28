@@ -71,9 +71,6 @@ class PunchDetectionGame:
         self.fusion_detector.add_strategy(self.accelerometer_strategy)
         self.fusion_detector.add_strategy(self.pose_strategy)
 
-        # Initialize all strategies
-        self.fusion_detector.initialize_strategies()
-
     def _handle_sensor_data(self, data):
         """Handle incoming sensor data from the server"""
         self.sensor_queue.put(data)
