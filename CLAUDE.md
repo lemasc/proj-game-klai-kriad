@@ -15,8 +15,13 @@ This is a punch detection game that combines smartphone accelerometer data with 
 ### Testing
 No formal test framework is configured. Manual testing involves:
 1. Running the game with `uv run main.py`
-2. Connecting smartphone to the web interface at `http://localhost:5000`
+2. Connecting smartphone to the web interface (QR code or URL displayed at startup)
 3. Testing punch detection with physical movements
+
+### Environment Setup
+- **Copy environment file**: `cp .env.example .env`
+- **Add ngrok auth token**: Get token from [ngrok.com](https://ngrok.com) and add to `.env`
+- **Ngrok setup enables**: HTTPS tunneling for iOS compatibility and easier smartphone connection
 
 ## Architecture
 
@@ -66,6 +71,8 @@ Adjust values in `detection/detection_config.py`:
 
 ### Network Setup
 The smartphone interface requires network connectivity:
-- Local network: Use computer's IP address with port 5000
-- HTTPS requirement: iOS requires HTTPS; use ngrok for tunneling
+- **Recommended**: Use ngrok HTTPS tunneling (configured via `.env` file)
+- **Alternative**: Local network using computer's IP address with port 5000
+- **iOS requirement**: HTTPS needed; ngrok provides this automatically
 - Server runs on `0.0.0.0:5000` by default (configurable in `game/game_config.py`)
+- Game displays QR code and URLs at startup for easy smartphone connection

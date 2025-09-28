@@ -22,50 +22,25 @@ Simply clone this repo (or download ZIP), then run this command in your terminal
 uv sync
 ```
 
-### Decide how your phone talk to your computer
+### Use your phone as an accelerometer sensor
 
 You can actually run this without a companion device, but it's highly recommended for better precision.
 
 To send accelerometer sensor data to your computer, this prototype starts a web server for your phone to connect. That said, you must know how to connect between the two.
 
-#### 1. Use Computer IP Address
-
-> [!WARNING]
->
-> On iOS, this won't work because the website requires HTTPS. See section 2.
-
-Ensure your phone and your computer is running on the same Wi-Fi, if not, see section 2.
-
-Find your computer IP address by running this in your terminal.
-
-**Windows:**
-
-```cmd
-ipconfig
-```
-
-Look for "IPv4 Address" under your WiFi adapter (usually starts with 192.168.x.x)
-
-**Mac/Linux:**
-
-```bash
-ifconfig
-```
-
-Look for "inet" under your WiFi interface (usually starts with 192.168.x.x)
-
-#### 2. Use ngrok HTTPS tunnel (Recommended - iOS Compatible)
-
-For the easiest setup, especially on iOS devices that require HTTPS, this project now includes automatic ngrok integration:
+This project integrates with ngrok proxy, so you can setup easily. Here's how:
 
 1. **Get ngrok auth token**:
+
    - Visit [ngrok.com](https://ngrok.com) and create a free account
    - Go to [your auth token page](https://dashboard.ngrok.com/get-started/your-authtoken)
    - Copy your auth token
 
 2. **Setup environment**:
-   - Copy the `.env.example` file to `.env`
-   - Add your ngrok auth token:
+
+   - Copy the `.env.example` file to `.env` **Don't move the file!**
+   - Add your ngrok auth token to the content of `.env`:
+
    ```
    NGROK_AUTH_TOKEN=your_token_here
    ```
@@ -96,6 +71,7 @@ Starting Punch Detection Game...
 ```
 
 If you didn't setup ngrok, you'll see:
+
 ```
 Warning: NGROK_AUTH_TOKEN not found in .env file. Ngrok tunneling disabled.
 To enable ngrok, add your auth token to .env file:
@@ -107,13 +83,16 @@ Local access only: http://0.0.0.0:5000
 ### Connect Your Smartphone
 
 **With ngrok (Recommended)**:
+
 1. **Scan the QR code** displayed in the terminal, or
 2. Manually visit the HTTPS URL shown (e.g., `https://abc123.ngrok-free.app`)
 
 **Local network only**:
+
 1. Visit `http://your-computer-ip:5000` (e.g., `http://192.168.1.100:5000`)
 
 **Then**:
+
 1. Tap "Start Tracking" on the web interface
 2. Grant motion sensor permissions when prompted
 3. You should see "Connected & Tracking" status
@@ -172,19 +151,3 @@ Local access only: http://0.0.0.0:5000
 - **Punches Sent**: Number of data packets sent
 - **Game Score**: Live score from the game
 - **Connected**: Connection status indicator
-
-## 🎯 Game Features
-
-### Visual Elements
-
-- **Pose tracking**: Real-time skeleton overlay
-- **Punch effects**: Screen flash on successful punches
-- **Score display**: Live score, combo counter, punch count
-- **Connection status**: Shows if smartphone is connected
-
-### Scoring Mechanics
-
-- **Punch Quality**: Based on acceleration magnitude and pose
-- **Combo System**: Consecutive punches within 2 seconds
-- **Cooldown**: 0.5 seconds between punch detections
-- **Weighted Scoring**: 70% accelerometer, 30% visual pose
