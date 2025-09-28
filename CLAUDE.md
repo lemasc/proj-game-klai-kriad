@@ -4,98 +4,68 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a punch detection game that combines smartphone accelerometer data with computer vision using MediaPipe to detect and score punches. The game uses the smartphone as a sensor controller and the computer's webcam for pose tracking.
+This is a punch detection game that combines smartphone accelerometer data with computer vision to detect and score punches. The game uses MediaPipe for pose detection through the webcam and receives real-time accelerometer data from a smartphone via a Flask web server.
 
-## Development Setup
+## Commands
 
-### Dependencies and Environment
-- Python 3.12+ (specified in .python-version)
-- Uses `uv` as package manager with virtual environment
-- Key dependencies: Flask, MediaPipe, OpenCV, NumPy
+### Development
+- **Run the game**: `uv run main.py`
+- **Install dependencies**: `uv sync`
 
-### Commands
-
-**Install dependencies:**
-```bash
-uv sync
-```
-
-**Run the application:**
-```bash
-uv run main.py
-```
-
-**Check Python version:**
-```bash
-python --version  # Should be 3.12+
-```
+### Testing
+No formal test framework is configured. Manual testing involves:
+1. Running the game with `uv run main.py`
+2. Connecting smartphone to the web interface at `http://localhost:5000`
+3. Testing punch detection with physical movements
 
 ## Architecture
 
-### Core Components
+### Core Game Components
+- **Main Loop**: `main.py` - Contains `PunchDetectionGame` class that orchestrates all components
+- **Event System**: `game/event_manager.py` - Central event-driven architecture for component communication
+- **Game State**: `game/game_state.py` - Manages scoring, combos, and game statistics
+- **UI Manager**: `game/ui_manager.py` - Handles all visual rendering and effects
 
-**main.py** - Single-file application containing:
-- `PunchDetectionGame` class - Main game logic and coordination
-- Flask web server for smartphone sensor communication
-- MediaPipe pose detection pipeline
-- OpenCV camera capture and display
-- Real-time punch detection algorithm combining accelerometer + pose data
+### Detection System
+The detection system uses a strategy pattern with fusion:
 
-**templates/index.html** - Smartphone interface:
-- Web-based accelerometer sensor controller
-- Connects to Flask server on port 5000
-- Sends motion data via HTTP POST requests
-- Provides real-time status and metrics display
+- **FusionDetector**: `detection/fusion_detector.py` - Combines results from multiple detection strategies
+- **AccelerometerStrategy**: `detection/accelerometer/accelerometer_strategy.py` - Processes smartphone sensor data
+- **PoseStrategy**: `detection/pose/pose_strategy.py` - Analyzes MediaPipe pose landmarks
+- **Base Strategy**: `detection/base_strategy.py` - Abstract base class for all detection strategies
 
-### Key Systems
+### Data Flow
+1. Smartphone sends accelerometer data to Flask server (`detection/accelerometer/sensor_server.py`)
+2. OpenCV captures webcam frames
+3. Both data sources are processed by their respective strategies
+4. FusionDetector combines strategy results using weighted scoring (70% accelerometer, 30% pose)
+5. Events are triggered for punch detection, UI updates, and game state changes
 
-**Sensor Communication:**
-- Flask server runs on port 5000 (`/sensor` POST endpoint, `/status` GET endpoint)
-- Smartphone connects via local WiFi (IP address) or HTTPS tunnel (for iOS)
-- Data format: JSON with x,y,z acceleration, gyroscope, and timestamp
+### Configuration
+- **Detection Config**: `detection/detection_config.py` - Thresholds and weights for detection algorithms
+- **Game Config**: `game/game_config.py` - UI colors, timing, scoring, and camera settings
 
-**Punch Detection Algorithm:**
-- Combines accelerometer magnitude (70% weight) with pose analysis (30% weight)
-- Accelerometer threshold: 20.0 m/s² (configurable in `accel_punch_threshold`)
-- Pose analysis: arm extension and forward movement detection
-- Punch cooldown: 0.5 seconds between detections
-- Combo system: consecutive punches within 2 seconds for bonus points
+### Key Patterns
+- **Event-Driven Architecture**: All components communicate through the EventManager
+- **Strategy Pattern**: Detection strategies can be added/removed dynamically
+- **Separation of Concerns**: Clear boundaries between detection, game logic, and UI
 
-**Game Mechanics:**
-- Score: 0-100 points per punch based on force/speed
-- Combo bonuses: +10 points per consecutive hit
-- Visual effects: screen flash and "PUNCH!" text overlay
-- Real-time pose skeleton overlay using MediaPipe
+## Development Notes
 
-### Configuration Points
+### Adding New Detection Strategies
+1. Inherit from `BaseDetectionStrategy` in `detection/base_strategy.py`
+2. Implement required methods: `setup()`, `cleanup()`, `get_current_results()`
+3. Register event handlers in the constructor
+4. Add to FusionDetector in `main.py`
 
-**Detection Sensitivity (in main.py:37-40):**
-```python
-self.accel_punch_threshold = 20.0    # Lower = more sensitive
-self.visual_punch_threshold = 0.3    # Lower = more sensitive
-self.punch_cooldown = 0.5           # Seconds between punches
-```
+### Modifying Detection Sensitivity
+Adjust values in `detection/detection_config.py`:
+- `ACCEL_PUNCH_THRESHOLD`: Minimum acceleration to trigger detection
+- `VISUAL_PUNCH_THRESHOLD`: Minimum pose score for detection
+- `ACCEL_WEIGHT`/`VISUAL_WEIGHT`: Fusion weights (must sum to 1.0)
 
-**Scoring Weights (in main.py:196):**
-```python
-combined_score = (accel_score * 0.7 + visual_score * 0.3)
-```
-
-## Network Setup
-
-The application requires network connectivity between smartphone and computer:
-
-1. **Same WiFi Network**: Computer IP address method (doesn't work on iOS due to HTTPS requirement)
-2. **HTTPS Tunnel**: Use ngrok or similar for iOS compatibility and cross-network access
-
-## Controls
-
-- **Space Bar**: Manual punch trigger for testing
-- **R Key**: Reset score
-- **Q Key**: Quit game
-
-## Troubleshooting
-
-**Camera Issues**: Ensure no other applications are using the camera; check lighting conditions
-**Connection Issues**: Verify firewall settings for port 5000, confirm WiFi connectivity
-**Detection Issues**: Adjust thresholds in code or improve lighting/positioning
+### Network Setup
+The smartphone interface requires network connectivity:
+- Local network: Use computer's IP address with port 5000
+- HTTPS requirement: iOS requires HTTPS; use ngrok for tunneling
+- Server runs on `0.0.0.0:5000` by default (configurable in `game/game_config.py`)
