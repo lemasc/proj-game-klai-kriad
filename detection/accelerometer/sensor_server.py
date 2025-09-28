@@ -31,6 +31,9 @@ class SensorServer:
         # SocketIO setup
         self.socketio = SocketIO(self.app, cors_allowed_origins="*", logger=False, engineio_logger=False)
 
+        # Track connected clients
+        self.connected_clients = set()
+
         # Setup routes and handlers
         self._setup_routes()
         self._setup_socket_handlers()
@@ -52,6 +55,7 @@ class SensorServer:
         @self.socketio.on('connect')
         def handle_connect():
             print(f"Client connected: {request.sid}")
+            self.connected_clients.add(request.sid)
             game_state = self.game_state_provider()
             emit('status', {
                 'connected': True,
@@ -63,6 +67,7 @@ class SensorServer:
         @self.socketio.on('disconnect')
         def handle_disconnect():
             print(f"Client disconnected: {request.sid}")
+            self.connected_clients.discard(request.sid)
 
         @self.socketio.on('sensor_data')
         def handle_sensor_data(data):
@@ -193,3 +198,11 @@ class SensorServer:
         if self.public_url:
             return self.public_url
         return f"http://{self.config.SERVER_HOST}:{self.config.SERVER_PORT}"
+
+    def has_connected_clients(self):
+        """Check if there are any connected WebSocket clients"""
+        return len(self.connected_clients) > 0
+
+    def get_connected_client_count(self):
+        """Get the number of connected WebSocket clients"""
+        return len(self.connected_clients)

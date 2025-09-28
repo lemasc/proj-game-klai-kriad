@@ -193,6 +193,24 @@ class AccelerometerStrategy(BaseDetectionStrategy):
         """
         return self.sensor_server is not None and self.sensor_server.is_running()
 
+    def has_connected_clients(self) -> bool:
+        """
+        Check if there are any connected WebSocket clients.
+
+        Returns:
+            True if clients are connected, False otherwise
+        """
+        return self.sensor_server is not None and self.sensor_server.has_connected_clients()
+
+    def get_connected_client_count(self) -> int:
+        """
+        Get the number of connected WebSocket clients.
+
+        Returns:
+            Number of connected clients
+        """
+        return self.sensor_server.get_connected_client_count() if self.sensor_server else 0
+
 
     def get_strategy_info(self) -> Dict[str, Any]:
         """
@@ -204,6 +222,8 @@ class AccelerometerStrategy(BaseDetectionStrategy):
         base_info = super().get_strategy_info()
         base_info.update({
             'server_running': self.is_server_running(),
+            'has_connected_clients': self.has_connected_clients(),
+            'connected_client_count': self.get_connected_client_count(),
             'has_sensor_data': self.latest_sensor_data is not None,
             'has_analysis': self.latest_analysis is not None,
             'motion_analyzer_ready': self.motion_analyzer is not None

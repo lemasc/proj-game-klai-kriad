@@ -116,8 +116,13 @@ class PunchDetectionGame:
     
     def get_sensor_status(self):
         """Get current sensor connection status."""
+        # Check if accelerometer strategy has connected WebSocket clients
+        connected = False
+        if hasattr(self, 'accelerometer_strategy') and self.accelerometer_strategy:
+            connected = self.accelerometer_strategy.has_connected_clients()
+
         return {
-            'connected': not self.sensor_queue.empty() or len(self.sensor_data_buffer) > 0
+            'connected': connected
         }
     
     def run(self):
