@@ -88,19 +88,51 @@ class PoseAnalyzer:
             return 0, {}
 
     def detect_orientation(self, landmarks):
-        """Detect if user is facing front or side based on shoulder width"""
+        """Detect if user is facing front or side based on multiple factors"""
         try:
             left_shoulder = landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
             right_shoulder = landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+            nose = landmarks[self.mp_pose.PoseLandmark.NOSE.value]
 
+            # Calculate shoulder width (primary factor)
             shoulder_width = abs(left_shoulder.x - right_shoulder.x)
 
-            # Wide shoulders = front-facing, narrow = side-facing
+            # Calculate nose position relative to shoulders (secondary factor)
+            shoulder_center_x = (left_shoulder.x + right_shoulder.x) / 2
+            nose_offset = abs(nose.x - shoulder_center_x)
+
+            # Calculate shoulder visibility (tertiary factor)
+            # Both shoulders should be visible and roughly at same depth for front-facing
+            shoulder_z_diff = abs(left_shoulder.z - right_shoulder.z) if hasattr(left_shoulder, 'z') and hasattr(right_shoulder, 'z') else 0
+
+            # Multi-factor scoring system
+            front_score = 0
+
+            # Factor 1: Shoulder width (lowered threshold, more generous)
             if shoulder_width > FRONT_FACING_SHOULDER_THRESHOLD:
-                return "front"
-            else:
-                return "side"
-        except:
+                front_score += 2
+            elif shoulder_width > FRONT_FACING_SHOULDER_THRESHOLD * 0.7:  # More lenient
+                front_score += 1
+
+            # Factor 2: Nose alignment (should be centered between shoulders)
+            if nose_offset < shoulder_width * 0.3:  # Nose close to shoulder center
+                front_score += 1
+
+            # Factor 3: Shoulder depth similarity (both shoulders at similar Z depth)
+            if shoulder_z_diff < 0.1:  # Similar depth = front-facing
+                front_score += 1
+
+            # Factor 4: Minimum shoulder visibility
+            if shoulder_width > 0.08:  # Very basic visibility check
+                front_score += 1
+
+            # Decision: Need at least 3 out of 5 points to be considered front-facing
+            orientation = "front" if front_score >= 3 else "side"
+
+            return orientation
+
+        except Exception as e:
+            print(f"Error in orientation detection: {e}")
             return "front"  # Default to front-facing
 
     def calculate_movement_velocity(self, current_landmarks, current_timestamp):
@@ -137,32 +169,98 @@ class PoseAnalyzer:
         except:
             return 0
 
+    def _calculate_z_velocity(self, current_landmarks):
+        """Calculate Z-axis velocity based on wrist extension relative to shoulders (punch biomechanics)"""
+        try:
+            # Get current positions
+            left_wrist = current_landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value]
+            right_wrist = current_landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value]
+            left_shoulder = current_landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+            right_shoulder = current_landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+
+            # Get previous positions
+            prev_left_wrist = self.prev_landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value]
+            prev_right_wrist = self.prev_landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value]
+            prev_left_shoulder = self.prev_landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+            prev_right_shoulder = self.prev_landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+
+            # Calculate relative Z-distances (wrist forward of shoulder = punch extension)
+            current_left_extension = left_wrist.z - left_shoulder.z
+            current_right_extension = right_wrist.z - right_shoulder.z
+            prev_left_extension = prev_left_wrist.z - prev_left_shoulder.z
+            prev_right_extension = prev_right_wrist.z - prev_right_shoulder.z
+
+            # Calculate changes in punch extension
+            left_extension_change = abs(current_left_extension - prev_left_extension)
+            right_extension_change = abs(current_right_extension - prev_right_extension)
+
+            # Calculate time difference
+            current_time = time.time()
+            time_diff = current_time - self.prev_timestamp
+            if time_diff <= 0:
+                return 0
+
+            # Calculate extension velocities (how fast the punch is extending)
+            left_extension_velocity = left_extension_change / time_diff
+            right_extension_velocity = right_extension_change / time_diff
+
+            # Use maximum extension velocity (most active hand)
+            max_extension_velocity = max(left_extension_velocity, right_extension_velocity)
+
+            # Apply smoothing to reduce noise
+            if hasattr(self, 'extension_velocity_history'):
+                self.extension_velocity_history.append(max_extension_velocity)
+                if len(self.extension_velocity_history) > 3:  # Keep last 3 measurements (faster response)
+                    self.extension_velocity_history.pop(0)
+                # Return smoothed velocity
+                smoothed_velocity = sum(self.extension_velocity_history) / len(self.extension_velocity_history)
+                return smoothed_velocity
+            else:
+                # Initialize smoothing history
+                self.extension_velocity_history = [max_extension_velocity]
+                return max_extension_velocity
+
+        except Exception as e:
+            print(f"Error calculating punch extension velocity: {e}")
+            return 0
+
     def analyze_front_facing(self, landmarks, velocity):
-        """Analyze movement for front-facing user using velocity + X/Y analysis"""
+        """Analyze front-facing punches using biomechanics (extension) + X/Y filtering"""
         try:
             left_wrist = landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value]
             right_wrist = landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value]
             left_shoulder = landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
             right_shoulder = landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
 
-            # Calculate lateral (X-axis) and vertical (Y-axis) movements
+            # Calculate lateral (X-axis) and vertical (Y-axis) movements for filtering
             left_lateral = abs(left_wrist.x - left_shoulder.x)
             right_lateral = abs(right_wrist.x - right_shoulder.x)
             left_vertical = abs(left_wrist.y - left_shoulder.y)
             right_vertical = abs(right_wrist.y - right_shoulder.y)
 
-            # Get maximum movements
             max_lateral = max(left_lateral, right_lateral)
             max_vertical = max(left_vertical, right_vertical)
 
-            # Combine position-based and velocity-based scores
-            position_score = max(max_lateral, max_vertical)
-            velocity_component = min(velocity / PUNCH_VELOCITY_THRESHOLD, 1.0) if velocity > 0 else 0
+            # Calculate punch extension velocity (primary signal)
+            extension_velocity = 0
+            if self.prev_landmarks:
+                extension_velocity = self._calculate_z_velocity(landmarks)
 
-            # Weight velocity more heavily for front-facing detection
-            movement_score = (position_score * 0.4 + velocity_component * 0.6) * FRONT_VELOCITY_MULTIPLIER
-            return min(movement_score, 1.0)
-        except:
+            # X/Y Movement Filter: Reject if too much lateral/vertical movement
+            # Clean front punches should have minimal X/Y movement
+            lateral_filter = 1.0 if max_lateral < 0.15 else max(0.3, 1.0 - (max_lateral - 0.15) * 3)
+            vertical_filter = 1.0 if max_vertical < 0.15 else max(0.3, 1.0 - (max_vertical - 0.15) * 3)
+            movement_filter = min(lateral_filter, vertical_filter)
+
+            # Primary score based on punch extension velocity
+            extension_score = min(extension_velocity / PUNCH_VELOCITY_THRESHOLD, 1.0) if extension_velocity > 0 else 0
+
+            # Apply movement filter to reduce false positives
+            filtered_score = extension_score * movement_filter * FRONT_VELOCITY_MULTIPLIER
+
+            return min(filtered_score, 1.0)
+        except Exception as e:
+            print(f"Error in front-facing analysis: {e}")
             return 0
 
     def analyze_side_facing(self, landmarks, velocity):
