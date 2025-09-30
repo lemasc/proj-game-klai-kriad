@@ -1,7 +1,5 @@
 import cv2
-import queue
 import time
-from collections import deque
 from dotenv import load_dotenv
 
 # Load environment variables at the start
@@ -28,16 +26,6 @@ class PunchDetectionGame:
         # Game state
         self.game_state = GameState()
 
-        # Data storage
-        self.sensor_queue = queue.Queue()
-        self.sensor_data_buffer = deque(maxlen=SENSOR_BUFFER_SIZE)  # Keep last 10 readings
-        self.pose_data_buffer = deque(maxlen=POSE_BUFFER_SIZE)
-
-        # Thresholds (adjust based on testing)
-        self.accel_punch_threshold = ACCEL_PUNCH_THRESHOLD  # m/s²
-        self.visual_punch_threshold = VISUAL_PUNCH_THRESHOLD
-        self.punch_cooldown = PUNCH_COOLDOWN  # seconds between punches
-
         # UI Manager
         self.ui_manager = UIManager()
 
@@ -62,10 +50,9 @@ class PunchDetectionGame:
 
         config = ServerConfig()
 
-        # Initialize accelerometer strategy
+        # Initialize accelerometer strategy (handles sensor data internally)
         self.accelerometer_strategy = AccelerometerStrategy(
             event_manager=self.event_manager,
-            sensor_data_callback=self._handle_sensor_data,
             game_state_provider=self._get_game_state,
             config=config
         )
@@ -77,29 +64,9 @@ class PunchDetectionGame:
         self.fusion_detector.add_strategy(self.accelerometer_strategy, weight=ACCEL_WEIGHT)
         self.fusion_detector.add_strategy(self.pose_strategy, weight=VISUAL_WEIGHT)
 
-    def _handle_sensor_data(self, data):
-        """Handle incoming sensor data from the server"""
-        self.sensor_queue.put(data)
-        return self.sensor_queue.qsize()
-
     def _get_game_state(self):
         """Provide current game state for the sensor server"""
         return self.game_state.get_state_dict()
-    
-    def process_sensor_data(self):
-        """Process queued sensor data"""
-        current_sensor_data = None
-        
-        # Get latest sensor data
-        while not self.sensor_queue.empty():
-            try:
-                current_sensor_data = self.sensor_queue.get_nowait()
-                self.sensor_data_buffer.append(current_sensor_data)
-            except queue.Empty:
-                break
-        
-        return current_sensor_data
-    
     
     def register_punch(self, score, timestamp):
         """Register a successful punch and update game state"""
@@ -113,7 +80,6 @@ class PunchDetectionGame:
         # Trigger game state change event (AccelerometerStrategy will handle broadcasting)
         game_state = self.game_state.get_state_dict()
         self.event_manager.trigger_event('game_state_changed', game_state)
-    
     
     def run(self):
         """Main game loop with event-driven architecture"""
@@ -144,12 +110,8 @@ class PunchDetectionGame:
                 # Trigger frame_received event (PoseStrategy will handle MediaPipe processing)
                 self.event_manager.trigger_event('frame_received', frame)
 
-                # Process sensor data
-                current_sensor_data = self.process_sensor_data()
-
-                # Trigger sensor data event if data is available
-                if current_sensor_data:
-                    self.event_manager.trigger_event('sensor_data_received', current_sensor_data)
+                # Trigger sensor queue processing (AccelerometerStrategy handles internally)
+                self.event_manager.trigger_event('process_sensor_queue')
 
                 # Update game timer if playing
                 self.game_state.update_timer()

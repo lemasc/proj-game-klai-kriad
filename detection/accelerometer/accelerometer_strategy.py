@@ -5,12 +5,15 @@ This strategy handles its own dependencies and lifecycle through event hooks.
 
 import cv2
 import math
+import queue
 import time
+from collections import deque
 from typing import Optional, Dict, Any
 from detection.base_strategy import BaseDetectionStrategy
 from detection.accelerometer.sensor_server import SensorServer
 from detection.accelerometer.motion_analyzer import MotionAnalyzer
 from detection.detection_config import ACCEL_PUNCH_THRESHOLD
+from detection.detection_config import SENSOR_BUFFER_SIZE
 from game.event_manager import EventManager
 from game.game_config import SENSOR_CONNECTED_COLOR, SENSOR_DISCONNECTED_COLOR, NORMAL_TEXT_COLOR
 
@@ -23,21 +26,23 @@ class AccelerometerStrategy(BaseDetectionStrategy):
     for punch detection. Results are stored internally and accessed by FusionDetector.
     """
 
-    def __init__(self, event_manager: EventManager, sensor_data_callback=None, game_state_provider=None, config=None):
+    def __init__(self, event_manager: EventManager, game_state_provider=None, config=None):
         """
         Initialize accelerometer strategy.
 
         Args:
             event_manager: Event manager for registering hooks
-            sensor_data_callback: Callback for sensor data (optional, uses internal if not provided)
             game_state_provider: Function that returns current game state
             config: Server configuration object
         """
         self.sensor_server: Optional[SensorServer] = None
         self.motion_analyzer: Optional[MotionAnalyzer] = None
-        self.sensor_data_callback = sensor_data_callback
         self.game_state_provider = game_state_provider
         self.config = config
+
+        # Internal sensor data queue and buffer
+        self.sensor_queue = queue.Queue()
+        self.sensor_data_buffer = deque(maxlen=SENSOR_BUFFER_SIZE)
 
         # Latest sensor data and analysis results
         self.latest_sensor_data: Optional[Dict] = None
@@ -48,7 +53,7 @@ class AccelerometerStrategy(BaseDetectionStrategy):
     def register_hooks(self) -> None:
         """Register event hooks for accelerometer strategy."""
         self.event_manager.register_hook('setup', self.setup_server, priority=10)
-        self.event_manager.register_hook('sensor_data_received', self.process_sensor_data, priority=10)
+        self.event_manager.register_hook('process_sensor_queue', self.process_sensor_queue, priority=10)
         self.event_manager.register_hook('game_state_changed', self.handle_game_state_update, priority=10)
         self.event_manager.register_hook('draw_ui', self.draw_strategy_ui, priority=10)
         self.event_manager.register_hook('cleanup', self.cleanup_server, priority=10)
@@ -59,15 +64,11 @@ class AccelerometerStrategy(BaseDetectionStrategy):
             # Initialize motion analyzer
             self.motion_analyzer = MotionAnalyzer(ACCEL_PUNCH_THRESHOLD)
 
-            # Set up sensor data callback
-            if not self.sensor_data_callback:
-                self.sensor_data_callback = self._handle_sensor_data
-
             # Create sensor server if config is provided
             if self.config:
                 print("AccelerometerStrategy: Starting sensor server...")
                 self.sensor_server = SensorServer(
-                    sensor_data_callback=self.sensor_data_callback,
+                    sensor_data_callback=self._handle_sensor_data,
                     game_state_provider=self.game_state_provider or self._default_game_state_provider,
                     config=self.config
                 )
@@ -97,16 +98,39 @@ class AccelerometerStrategy(BaseDetectionStrategy):
         except Exception as e:
             print(f"AccelerometerStrategy: Error during cleanup: {e}")
 
-    def process_sensor_data(self, sensor_data: Dict[str, Any]) -> None:
+    def process_sensor_queue(self) -> Optional[Dict[str, Any]]:
         """
-        Process incoming sensor data and analyze for punch detection.
+        Process queued sensor data from internal queue.
+
+        Returns:
+            Latest sensor data processed, or None if no data available
+        """
+        if not self.is_strategy_active() or not self.motion_analyzer:
+            return None
+
+        current_sensor_data = None
+
+        # Get latest sensor data from queue
+        while not self.sensor_queue.empty():
+            try:
+                current_sensor_data = self.sensor_queue.get_nowait()
+                self.sensor_data_buffer.append(current_sensor_data)
+            except queue.Empty:
+                break
+
+        # Process the latest sensor data if available
+        if current_sensor_data:
+            self._analyze_sensor_data(current_sensor_data)
+
+        return current_sensor_data
+
+    def _analyze_sensor_data(self, sensor_data: Dict[str, Any]) -> None:
+        """
+        Analyze sensor data for punch detection.
 
         Args:
             sensor_data: Dictionary containing accelerometer data (x, y, z, timestamp)
         """
-        if not self.is_strategy_active() or not self.motion_analyzer:
-            return
-
         try:
             # Store latest sensor data
             self.latest_sensor_data = sensor_data
@@ -128,7 +152,7 @@ class AccelerometerStrategy(BaseDetectionStrategy):
             self.update_results(analysis_result)
 
         except Exception as e:
-            print(f"AccelerometerStrategy: Error processing sensor data: {e}")
+            print(f"AccelerometerStrategy: Error analyzing sensor data: {e}")
 
     def handle_game_state_update(self, game_state: Dict[str, Any]) -> None:
         """
@@ -145,17 +169,16 @@ class AccelerometerStrategy(BaseDetectionStrategy):
 
     def _handle_sensor_data(self, data: Dict[str, Any]) -> int:
         """
-        Internal sensor data callback that triggers event.
+        Internal sensor data callback that queues incoming sensor data.
 
         Args:
             data: Sensor data from smartphone
 
         Returns:
-            Queue size (dummy value for compatibility)
+            Queue size for monitoring
         """
-        # Trigger sensor data event which will call process_sensor_data
-        self.event_manager.trigger_event('sensor_data_received', data)
-        return 1  # Dummy queue size
+        self.sensor_queue.put(data)
+        return self.sensor_queue.qsize()
 
     def _default_game_state_provider(self) -> Dict[str, Any]:
         """
