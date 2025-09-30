@@ -25,9 +25,9 @@ class FusionDetector:
         """
         self.event_manager = event_manager
         self.strategies: List[BaseDetectionStrategy] = []
+        self.strategy_weights: Dict[str, float] = {}  # Maps strategy name to weight
 
         # Detection thresholds
-        self.visual_punch_threshold = VISUAL_PUNCH_THRESHOLD
         self.punch_cooldown = PUNCH_COOLDOWN
 
         # Track last punch time for cooldown
@@ -37,14 +37,16 @@ class FusionDetector:
         self.motion_analyzer = None
         self.pose_analyzer = None
 
-    def add_strategy(self, strategy: BaseDetectionStrategy) -> None:
+    def add_strategy(self, strategy: BaseDetectionStrategy, weight: float = 1.0) -> None:
         """
         Add a detection strategy to the fusion detector.
 
         Args:
             strategy: Detection strategy to add
+            weight: Weight for this strategy in fusion (default 1.0)
         """
         self.strategies.append(strategy)
+        self.strategy_weights[strategy.get_strategy_name()] = weight
 
     def remove_strategy(self, strategy: BaseDetectionStrategy) -> bool:
         """
@@ -57,7 +59,10 @@ class FusionDetector:
             True if strategy was found and removed, False otherwise
         """
         try:
+            strategy_name = strategy.get_strategy_name()
             self.strategies.remove(strategy)
+            if strategy_name in self.strategy_weights:
+                del self.strategy_weights[strategy_name]
             return True
         except ValueError:
             return False
@@ -99,74 +104,60 @@ class FusionDetector:
 
         # Collect results from all active strategies
         strategy_results = {}
-        accel_score = 0
-        visual_score = 0
+        weighted_scores = []
+        total_weight = 0
 
-        # For new strategy-based approach
         for strategy in self.strategies:
             if strategy.is_strategy_active():
                 result = strategy.get_current_results()
-                strategy_results[strategy.get_strategy_name()] = result
+                strategy_name = strategy.get_strategy_name()
+                strategy_results[strategy_name] = result
 
-                # Map strategy results to legacy scoring (temporary compatibility)
-                if 'AccelerometerStrategy' in strategy.get_strategy_name():
-                    accel_score = result.get('score', 0) if result else 0
-                elif 'PoseStrategy' in strategy.get_strategy_name():
-                    visual_score = result.get('score', 0) if result else 0
+                # Extract score and weight for this strategy
+                score = result.get('score', 0) if result else 0
+                weight = self.strategy_weights.get(strategy_name, 1.0)
 
-        # Fallback to legacy analyzers if strategies not available
-        if not self.strategies and self.motion_analyzer and self.pose_analyzer:
-            accel_score, accel_metrics = self._analyze_accelerometer(sensor_data)
-            visual_score, visual_metrics = self._analyze_pose(pose_landmarks)
-            strategy_results = {
-                'legacy_accel': accel_metrics,
-                'legacy_pose': visual_metrics
-            }
+                weighted_scores.append(score * weight)
+                total_weight += weight
 
-        # Combine scores using weighted average
-        combined_score = (accel_score * ACCEL_WEIGHT + visual_score * VISUAL_WEIGHT)
+        # Fuse scores using weighted average
+        combined_score = sum(weighted_scores) / total_weight if total_weight > 0 else 0
 
-        # Determine if it's a punch using multiple criteria
-        is_punch = self._is_punch_detected(accel_score, visual_score, combined_score)
+        # Determine if it's a punch using combined score and strategy results
+        is_punch = self._is_punch_detected(strategy_results, combined_score)
 
         if is_punch:
             self.last_punch_time = current_time
 
         return is_punch, combined_score, {
             'strategy_results': strategy_results,
-            'combined_score': combined_score,
-            'accel_score': accel_score,
-            'visual_score': visual_score
+            'combined_score': combined_score
         }
 
-    def _analyze_accelerometer(self, sensor_data):
-        """Analyze accelerometer data for punch detection."""
-        return self.motion_analyzer.analyze_accelerometer_punch(sensor_data)
-
-    def _analyze_pose(self, pose_landmarks):
-        """Analyze pose landmarks for punch-like movements."""
-        return self.pose_analyzer.analyze_pose_punch(pose_landmarks)
-
-    def _is_punch_detected(self, accel_score, visual_score, combined_score):
+    def _is_punch_detected(self, strategy_results: Dict[str, Any], combined_score: float) -> bool:
         """
-        Determine if a punch is detected based on multiple criteria.
+        Determine if a punch is detected based on strategy results and combined score.
 
         Args:
-            accel_score: Accelerometer detection score (0-1)
-            visual_score: Visual detection score (0-1)
+            strategy_results: Dictionary of results from each strategy
             combined_score: Combined weighted score (0-1)
 
         Returns:
             bool: True if punch is detected
         """
-        # Punch detected if either:
-        # 1. High accelerometer activity OR high visual activity
-        # 2. Combined score meets minimum threshold
-        high_accel = accel_score > PUNCH_TRIGGER_ACCEL_THRESHOLD
-        high_visual = visual_score > self.visual_punch_threshold
-        sufficient_combined = combined_score > MINIMUM_COMBINED_SCORE
+        # Check if any strategy is confident about the detection
+        any_confident = any(
+            result.get('is_confident', False)
+            for result in strategy_results.values()
+            if result
+        )
 
-        return (high_accel or high_visual) and sufficient_combined
+        # If at least one strategy is confident, register as punch
+        if any_confident:
+            return True
+
+        # Otherwise, check if combined score meets minimum threshold
+        return combined_score > MINIMUM_COMBINED_SCORE
 
     def reset_cooldown(self):
         """Reset the punch cooldown timer."""

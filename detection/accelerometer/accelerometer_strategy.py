@@ -113,6 +113,7 @@ class AccelerometerStrategy(BaseDetectionStrategy):
             # Update results with analysis
             analysis_result = {
                 'score': punch_score,
+                'is_confident': punch_score > ACCEL_PUNCH_THRESHOLD,
                 'metrics': metrics,
                 'sensor_data': sensor_data,
                 'timestamp': time.time(),

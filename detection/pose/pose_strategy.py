@@ -5,14 +5,16 @@ This strategy handles its own MediaPipe lifecycle through event hooks.
 
 import time
 import cv2
-import mediapipe as mp
+import mediapipe.python.solutions.pose as mp_pose
+import mediapipe.python.solutions.drawing_utils as mp_drawing
 from typing import Optional, Dict, Any, List
 from detection.base_strategy import BaseDetectionStrategy
 from detection.pose.pose_analyzer import PoseAnalyzer
 from detection.detection_config import (
     MP_MIN_DETECTION_CONFIDENCE,
     MP_MIN_TRACKING_CONFIDENCE,
-    MP_MODEL_COMPLEXITY
+    MP_MODEL_COMPLEXITY,
+    VISUAL_PUNCH_THRESHOLD
 )
 from game.event_manager import EventManager
 
@@ -33,11 +35,6 @@ class PoseStrategy(BaseDetectionStrategy):
         Args:
             event_manager: Event manager for registering hooks
         """
-        # MediaPipe components
-        self.mp_pose: Optional[mp.solutions.pose] = None
-        self.mp_drawing: Optional[mp.solutions.drawing_utils] = None
-        self.pose: Optional[mp.solutions.pose.Pose] = None
-
         # Pose analyzer
         self.pose_analyzer: Optional[PoseAnalyzer] = None
 
@@ -61,9 +58,7 @@ class PoseStrategy(BaseDetectionStrategy):
             print("PoseStrategy: Initializing MediaPipe...")
 
             # Initialize MediaPipe
-            self.mp_pose = mp.solutions.pose
-            self.mp_drawing = mp.solutions.drawing_utils
-            self.pose = self.mp_pose.Pose(
+            self.pose = mp_pose.Pose(
                 static_image_mode=False,
                 model_complexity=MP_MODEL_COMPLEXITY,
                 enable_segmentation=False,
@@ -88,8 +83,6 @@ class PoseStrategy(BaseDetectionStrategy):
                 self.pose.close()
                 self.pose = None
 
-            self.mp_pose = None
-            self.mp_drawing = None
             self.pose_analyzer = None
 
             self.deactivate()
@@ -133,6 +126,7 @@ class PoseStrategy(BaseDetectionStrategy):
                 # Update results with analysis
                 analysis_result = {
                     'score': punch_score,
+                    'is_confident': punch_score > VISUAL_PUNCH_THRESHOLD,
                     'metrics': metrics,
                     'landmarks': landmarks,
                     'pose_results': pose_results,
@@ -148,6 +142,7 @@ class PoseStrategy(BaseDetectionStrategy):
                 self.latest_landmarks = None
                 no_pose_result = {
                     'score': 0,
+                    'is_confident': False,
                     'metrics': {'no_pose_detected': True},
                     'landmarks': None,
                     'pose_results': pose_results,
@@ -167,15 +162,15 @@ class PoseStrategy(BaseDetectionStrategy):
         Args:
             frame: OpenCV frame to draw on
         """
-        if not self.is_strategy_active() or not self.mp_drawing or not self.latest_pose_results:
+        if not self.is_strategy_active() or not self.latest_pose_results:
             return
 
         try:
             if self.latest_pose_results.pose_landmarks:
-                self.mp_drawing.draw_landmarks(
+                mp_drawing.draw_landmarks(
                     frame,
                     self.latest_pose_results.pose_landmarks,
-                    self.mp_pose.POSE_CONNECTIONS
+                    mp_pose.POSE_CONNECTIONS
                 )
         except Exception as e:
             print(f"PoseStrategy: Error drawing landmarks: {e}")
@@ -227,11 +222,11 @@ class PoseStrategy(BaseDetectionStrategy):
         Returns:
             Landmark object or None if not available
         """
-        if not self.latest_landmarks or not self.mp_pose:
+        if not self.latest_landmarks:
             return None
 
         try:
-            landmark_enum = getattr(self.mp_pose.PoseLandmark, landmark_name)
+            landmark_enum = getattr(mp_pose.PoseLandmark, landmark_name)
             return self.latest_landmarks[landmark_enum.value]
         except (AttributeError, IndexError):
             return None
