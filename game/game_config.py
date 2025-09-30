@@ -29,6 +29,11 @@ INSTRUCTION_COLOR = (255, 255, 0)  # Yellow for instructions
 SENSOR_CONNECTED_COLOR = (0, 255, 0)  # Green for connected sensor
 SENSOR_DISCONNECTED_COLOR = (0, 0, 255)  # Red for disconnected sensor
 
+# Strategy UI Position Settings (for draw_ui event chaining)
+STRATEGY_UI_START_X = 220  # X position for strategy UI elements
+STRATEGY_UI_START_Y = 40   # Starting Y position for first strategy UI element
+STRATEGY_UI_LINE_HEIGHT = 30  # Vertical spacing between UI elements
+
 # Camera Settings
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480

@@ -114,16 +114,6 @@ class PunchDetectionGame:
         game_state = self.game_state.get_state_dict()
         self.event_manager.trigger_event('game_state_changed', game_state)
     
-    def get_sensor_status(self):
-        """Get current sensor connection status."""
-        # Check if accelerometer strategy has connected WebSocket clients
-        connected = False
-        if hasattr(self, 'accelerometer_strategy') and self.accelerometer_strategy:
-            connected = self.accelerometer_strategy.has_connected_clients()
-
-        return {
-            'connected': connected
-        }
     
     def run(self):
         """Main game loop with event-driven architecture"""
@@ -177,12 +167,12 @@ class PunchDetectionGame:
                 # Trigger drawing phase events (strategies handle their own drawing)
                 self.event_manager.trigger_event('draw_overlays', frame)
 
-                # Draw game UI
-                sensor_status = self.get_sensor_status()
-                self.ui_manager.draw_game_ui(frame, self.game_state, sensor_status, current_sensor_data)
+                # Draw core game UI (score, combo, instructions, effects)
+                self.ui_manager.draw_game_ui(frame, self.game_state)
 
-                # Trigger UI drawing event
-                self.event_manager.trigger_event('draw_ui', frame, self.game_state, sensor_status)
+                # Trigger strategy UI drawing with position context for chaining
+                draw_context = {'next_y': STRATEGY_UI_START_Y, 'x': STRATEGY_UI_START_X}
+                self.event_manager.trigger_event_chain('draw_ui', draw_context, frame)
 
                 # Display frame
                 cv2.imshow('Punch Detection Game', frame)

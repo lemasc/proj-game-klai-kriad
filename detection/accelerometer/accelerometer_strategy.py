@@ -3,6 +3,8 @@ Accelerometer detection strategy that manages sensor server and motion analysis.
 This strategy handles its own dependencies and lifecycle through event hooks.
 """
 
+import cv2
+import math
 import time
 from typing import Optional, Dict, Any
 from detection.base_strategy import BaseDetectionStrategy
@@ -10,6 +12,7 @@ from detection.accelerometer.sensor_server import SensorServer
 from detection.accelerometer.motion_analyzer import MotionAnalyzer
 from detection.detection_config import ACCEL_PUNCH_THRESHOLD
 from game.event_manager import EventManager
+from game.game_config import SENSOR_CONNECTED_COLOR, SENSOR_DISCONNECTED_COLOR, NORMAL_TEXT_COLOR
 
 
 class AccelerometerStrategy(BaseDetectionStrategy):
@@ -47,6 +50,7 @@ class AccelerometerStrategy(BaseDetectionStrategy):
         self.event_manager.register_hook('setup', self.setup_server, priority=10)
         self.event_manager.register_hook('sensor_data_received', self.process_sensor_data, priority=10)
         self.event_manager.register_hook('game_state_changed', self.handle_game_state_update, priority=10)
+        self.event_manager.register_hook('draw_ui', self.draw_strategy_ui, priority=10)
         self.event_manager.register_hook('cleanup', self.cleanup_server, priority=10)
 
     def setup_server(self) -> None:
@@ -212,6 +216,54 @@ class AccelerometerStrategy(BaseDetectionStrategy):
         """
         return self.sensor_server.get_connected_client_count() if self.sensor_server else 0
 
+    def draw_strategy_ui(self, draw_context: Dict[str, Any], image) -> Dict[str, Any]:
+        """
+        Draw accelerometer-specific UI elements on the frame.
+
+        This method is called via the draw_ui event and uses the chained context
+        to determine where to draw. It updates the context with the next available
+        position for subsequent handlers.
+
+        Args:
+            draw_context: Dictionary containing drawing position and state
+            image: OpenCV image to draw on
+
+        Returns:
+            Updated context dictionary with next available position
+        """
+        if not self.is_strategy_active():
+            return draw_context
+
+        # Extract position from context
+        start_y = draw_context.get('next_y', 40)
+        x = draw_context.get('x', 220)
+        current_y = start_y
+
+        # Draw sensor connection status
+        is_connected = self.has_connected_clients()
+        status_color = SENSOR_CONNECTED_COLOR if is_connected else SENSOR_DISCONNECTED_COLOR
+        status_text = "Sensor: Connected" if is_connected else "Sensor: Disconnected"
+        cv2.putText(image, status_text, (x, current_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 2)
+        current_y += 30
+
+        # Draw debug info if sensor data is available
+        if self.latest_sensor_data:
+            try:
+                accel_mag = math.sqrt(
+                    self.latest_sensor_data.get('x', 0)**2 +
+                    self.latest_sensor_data.get('y', 0)**2 +
+                    self.latest_sensor_data.get('z', 0)**2
+                )
+                cv2.putText(image, f"Accel: {accel_mag:.1f}", (x, current_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, NORMAL_TEXT_COLOR, 1)
+                current_y += 30
+            except (TypeError, ValueError):
+                # Handle invalid sensor data gracefully
+                pass
+
+        # Return updated context with next available position
+        return {'next_y': current_y, 'x': x}
 
     def get_strategy_info(self) -> Dict[str, Any]:
         """

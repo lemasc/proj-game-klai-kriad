@@ -19,15 +19,13 @@ class UIManager:
         self.punch_effect_timer = 0
         self.punch_effect_duration = PUNCH_EFFECT_DURATION
 
-    def draw_game_ui(self, image, game_state, sensor_status, current_sensor_data=None):
+    def draw_game_ui(self, image, game_state):
         """
         Draw complete game UI on the provided image.
 
         Args:
             image: OpenCV image/frame to draw on
             game_state: GameState instance with current game data
-            sensor_status: Dictionary with sensor connection status
-            current_sensor_data: Optional current sensor data for debug display
 
         Returns:
             None (modifies image in place)
@@ -37,13 +35,8 @@ class UIManager:
         # Draw all UI components
         self._draw_ui_background(image)
         self._draw_game_stats(image, game_state)
-        self._draw_sensor_status(image, sensor_status)
         self._draw_punch_effects(image, width, height)
         self._draw_instructions(image, game_state, height)
-
-        # Draw debug info if sensor data available
-        if current_sensor_data:
-            self._draw_debug_info(image, current_sensor_data)
 
     def _draw_ui_background(self, image):
         """Draw the UI panel background."""
@@ -69,13 +62,6 @@ class UIManager:
         cv2.putText(image, f"Combo: {game_state.get_combo_multiplier()}x", (20, 100),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, combo_color, 2)
 
-    def _draw_sensor_status(self, image, sensor_status):
-        """Draw sensor connection status."""
-        is_connected = sensor_status.get('connected', False)
-        status_color = SENSOR_CONNECTED_COLOR if is_connected else SENSOR_DISCONNECTED_COLOR
-        status_text = "Sensor: Connected" if is_connected else "Sensor: Disconnected"
-        cv2.putText(image, status_text, (220, 40),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 2)
 
     def _draw_punch_effects(self, image, width, height):
         """Draw punch visual effects (flash and text)."""
@@ -106,19 +92,6 @@ class UIManager:
                 cv2.putText(image, instruction, (20, height - 80 + i * 25),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, INSTRUCTION_COLOR, 1)
 
-    def _draw_debug_info(self, image, sensor_data):
-        """Draw debug information about sensor data."""
-        try:
-            accel_mag = math.sqrt(
-                sensor_data.get('x', 0)**2 +
-                sensor_data.get('y', 0)**2 +
-                sensor_data.get('z', 0)**2
-            )
-            cv2.putText(image, f"Accel: {accel_mag:.1f}", (220, 70),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, NORMAL_TEXT_COLOR, 1)
-        except (TypeError, ValueError):
-            # Handle invalid sensor data gracefully
-            pass
 
     def trigger_punch_effect(self):
         """Trigger the visual punch effect."""

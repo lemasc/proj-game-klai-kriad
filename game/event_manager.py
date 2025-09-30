@@ -105,3 +105,34 @@ class EventManager:
     def clear_all(self) -> None:
         """Remove all registered callbacks for all events."""
         self.hooks.clear()
+
+    def trigger_event_chain(self, event_name: str, initial_context: dict, *args, **kwargs) -> dict:
+        """
+        Execute callbacks in chain, passing accumulated context to each handler.
+
+        Each callback receives the context dictionary and can update it with new values.
+        The updated context is passed to the next callback, allowing sequential processing
+        where each handler can use and modify shared state (e.g., UI drawing positions).
+
+        Args:
+            event_name: Name of the event to trigger
+            initial_context: Initial context dictionary to pass to first callback
+            *args: Additional positional arguments to pass to callbacks
+            **kwargs: Additional keyword arguments to pass to callbacks
+
+        Returns:
+            Final context dictionary after all callbacks have executed
+        """
+        context = initial_context.copy()
+
+        for priority, callback in self.hooks[event_name]:
+            try:
+                result = callback(context, *args, **kwargs)
+                # If callback returns a dict, merge it into context
+                if isinstance(result, dict):
+                    context.update(result)
+            except Exception as e:
+                # Log error but continue with other callbacks
+                print(f"Error in event callback for '{event_name}': {e}")
+
+        return context
