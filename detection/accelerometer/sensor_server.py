@@ -1,5 +1,6 @@
 import threading
 import time
+import logging
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import os
@@ -25,6 +26,10 @@ class SensorServer:
 
         # Flask app setup
         self.app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '../../templates'))
+        # Set a higher logging level to suppress lower-severity messages
+        werkzeug_logger = logging.getLogger('werkzeug')
+        werkzeug_logger.setLevel(logging.ERROR)
+        
         self.app.config['SECRET_KEY'] = config.FLASK_SECRET_KEY
         self.app.logger.disabled = True  # Disable Flask logs
 

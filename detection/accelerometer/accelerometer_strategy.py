@@ -15,7 +15,16 @@ from detection.accelerometer.motion_analyzer import MotionAnalyzer
 from detection.detection_config import ACCEL_PUNCH_THRESHOLD
 from detection.detection_config import SENSOR_BUFFER_SIZE
 from game.event_manager import EventManager
-from game.game_config import SENSOR_CONNECTED_COLOR, SENSOR_DISCONNECTED_COLOR, NORMAL_TEXT_COLOR
+from game.game_config import (
+    SENSOR_CONNECTED_COLOR,
+    SENSOR_DISCONNECTED_COLOR,
+    NORMAL_TEXT_COLOR,
+    FLASK_SECRET_KEY,
+    SERVER_HOST,
+    SERVER_PORT,
+    ENABLE_NGROK,
+    NGROK_AUTH_TOKEN
+)
 
 
 class AccelerometerStrategy(BaseDetectionStrategy):
@@ -26,19 +35,17 @@ class AccelerometerStrategy(BaseDetectionStrategy):
     for punch detection. Results are stored internally and accessed by FusionDetector.
     """
 
-    def __init__(self, event_manager: EventManager, game_state_provider=None, config=None):
+    def __init__(self, event_manager: EventManager, game_state_provider=None):
         """
         Initialize accelerometer strategy.
 
         Args:
             event_manager: Event manager for registering hooks
             game_state_provider: Function that returns current game state
-            config: Server configuration object
         """
         self.sensor_server: Optional[SensorServer] = None
         self.motion_analyzer: Optional[MotionAnalyzer] = None
         self.game_state_provider = game_state_provider
-        self.config = config
 
         # Internal sensor data queue and buffer
         self.sensor_queue = queue.Queue()
@@ -64,16 +71,22 @@ class AccelerometerStrategy(BaseDetectionStrategy):
             # Initialize motion analyzer
             self.motion_analyzer = MotionAnalyzer(ACCEL_PUNCH_THRESHOLD)
 
-            # Create sensor server if config is provided
-            if self.config:
-                print("AccelerometerStrategy: Starting sensor server...")
-                self.sensor_server = SensorServer(
-                    sensor_data_callback=self._handle_sensor_data,
-                    game_state_provider=self.game_state_provider or self._default_game_state_provider,
-                    config=self.config
-                )
-                self.sensor_server.start()
-                print("AccelerometerStrategy: Sensor server started")
+            # Create sensor server
+            print("AccelerometerStrategy: Starting sensor server...")
+            class ServerConfig:
+                FLASK_SECRET_KEY = FLASK_SECRET_KEY
+                SERVER_HOST = SERVER_HOST
+                SERVER_PORT = SERVER_PORT
+                ENABLE_NGROK = ENABLE_NGROK
+                NGROK_AUTH_TOKEN = NGROK_AUTH_TOKEN
+
+            self.sensor_server = SensorServer(
+                sensor_data_callback=self._handle_sensor_data,
+                game_state_provider=self.game_state_provider or self._default_game_state_provider,
+                config=ServerConfig()
+            )
+            self.sensor_server.start()
+            print("AccelerometerStrategy: Sensor server started")
 
             self.activate()
             print("AccelerometerStrategy: Initialized successfully")

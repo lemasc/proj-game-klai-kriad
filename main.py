@@ -40,21 +40,10 @@ class PunchDetectionGame:
 
     def _init_strategies(self):
         """Initialize detection strategies and add them to fusion detector."""
-        # Create server config for accelerometer strategy
-        class ServerConfig:
-            FLASK_SECRET_KEY = FLASK_SECRET_KEY
-            SERVER_HOST = SERVER_HOST
-            SERVER_PORT = SERVER_PORT
-            ENABLE_NGROK = ENABLE_NGROK
-            NGROK_AUTH_TOKEN = NGROK_AUTH_TOKEN
-
-        config = ServerConfig()
-
         # Initialize accelerometer strategy (handles sensor data internally)
         self.accelerometer_strategy = AccelerometerStrategy(
             event_manager=self.event_manager,
-            game_state_provider=self._get_game_state,
-            config=config
+            game_state_provider=self._get_game_state
         )
 
         # Initialize pose strategy
