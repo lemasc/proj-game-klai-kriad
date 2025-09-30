@@ -118,11 +118,6 @@ class PunchDetectionGame:
     def run(self):
         """Main game loop with event-driven architecture"""
         print("Starting Punch Detection Game...")
-        print("Make sure to:")
-        print("1. Connect your smartphone to the sensor interface")
-        print("2. Stand in front of the camera")
-        print("3. Start punching!")
-        print("Press 'q' to quit, 'r' to reset score")
 
         # Trigger setup event for all components
         self.event_manager.trigger_event('setup')
@@ -156,13 +151,17 @@ class PunchDetectionGame:
                 if current_sensor_data:
                     self.event_manager.trigger_event('sensor_data_received', current_sensor_data)
 
-                # Detect punches using fusion detector (strategies provide results)
-                is_punch, punch_score, metrics = self.fusion_detector.detect_punch()
+                # Update game timer if playing
+                self.game_state.update_timer()
 
-                if is_punch:
-                    self.register_punch(punch_score, time.time())
-                    # Trigger visual effect
-                    self.ui_manager.trigger_punch_effect()
+                # Detect punches using fusion detector (only during PLAYING state)
+                if self.game_state.is_playing():
+                    is_punch, punch_score, metrics = self.fusion_detector.detect_punch()
+
+                    if is_punch:
+                        self.register_punch(punch_score, time.time())
+                        # Trigger visual effect
+                        self.ui_manager.trigger_punch_effect()
 
                 # Trigger drawing phase events (strategies handle their own drawing)
                 self.event_manager.trigger_event('draw_overlays', frame)
@@ -181,13 +180,19 @@ class PunchDetectionGame:
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
+                elif key == ord('s'):
+                    # Start game from menu
+                    if self.game_state.is_menu():
+                        self.game_state.start_game()
+                        print("Game starting...")
                 elif key == ord('r'):
-                    # Reset score
-                    self.game_state.reset_score()
-                    print("Score reset!")
+                    # Return to menu / restart
+                    self.game_state.return_to_menu()
+                    print("Returned to menu")
                 elif key == ord(' '):
-                    # Manual punch trigger for testing
-                    self.register_punch(1.0, time.time())
+                    # Manual punch trigger for testing (only during PLAYING)
+                    if self.game_state.is_playing():
+                        self.register_punch(1.0, time.time())
 
         except KeyboardInterrupt:
             print("\nGame interrupted by user")

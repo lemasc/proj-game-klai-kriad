@@ -4,7 +4,17 @@ Handles all game logic related to scoring and state updates.
 """
 
 import time
+import json
+import os
+from enum import Enum
 from game.game_config import *
+
+class GameMode(Enum):
+    """Game mode states"""
+    MENU = "menu"
+    COUNTDOWN = "countdown"
+    PLAYING = "playing"
+    GAME_OVER = "game_over"
 
 class GameState:
     """
@@ -22,6 +32,19 @@ class GameState:
 
         # For tracking the most recent punch details
         self.last_punch_score = 0
+
+        # Game mode management
+        self.game_mode = GameMode.MENU
+        self.game_timer = 0
+        self.game_duration = 15.0  # 15 seconds game time
+        self.countdown_start_time = 0
+        self.game_start_time = 0
+
+        # High score tracking
+        self.high_score = 0
+        self.high_score_file = "game/high_score.json"
+        self.max_combo_this_game = 0
+        self._load_high_score()
 
     def register_punch(self, punch_strength, timestamp=None):
         """
@@ -81,6 +104,10 @@ class GameState:
             self.combo_count = 1
             combo_bonus = 0
 
+        # Track max combo this game
+        if self.combo_count > self.max_combo_this_game:
+            self.max_combo_this_game = self.combo_count
+
         return combo_bonus
 
     def reset_score(self):
@@ -90,6 +117,7 @@ class GameState:
         self.combo_count = 0
         self.last_punch_time = 0
         self.last_punch_score = 0
+        self.max_combo_this_game = 0
 
     def get_state_dict(self):
         """
@@ -131,3 +159,117 @@ class GameState:
     def get_punch_count(self):
         """Get total punch count."""
         return self.punch_count
+
+    def start_game(self):
+        """Start countdown sequence."""
+        self.game_mode = GameMode.COUNTDOWN
+        self.countdown_start_time = time.time()
+        self.reset_score()
+
+    def start_countdown(self):
+        """Alias for start_game for clarity."""
+        self.start_game()
+
+    def begin_playing(self):
+        """Begin the actual playing phase after countdown."""
+        self.game_mode = GameMode.PLAYING
+        self.game_start_time = time.time()
+        self.game_timer = 0
+
+    def update_timer(self):
+        """Update game timer and check for game over."""
+        if self.game_mode == GameMode.PLAYING:
+            self.game_timer = time.time() - self.game_start_time
+            if self.game_timer >= self.game_duration:
+                self.end_game()
+
+    def end_game(self):
+        """End the game and transition to game over screen."""
+        self.game_mode = GameMode.GAME_OVER
+        self.game_timer = self.game_duration
+        self._check_and_save_high_score()
+
+    def return_to_menu(self):
+        """Return to menu screen."""
+        self.game_mode = GameMode.MENU
+        self.reset_score()
+
+    def get_remaining_time(self):
+        """Get remaining time in seconds."""
+        if self.game_mode == GameMode.PLAYING:
+            return max(0, self.game_duration - self.game_timer)
+        return self.game_duration
+
+    def is_playing(self):
+        """Check if game is in playing mode."""
+        return self.game_mode == GameMode.PLAYING
+
+    def is_game_over(self):
+        """Check if game is over."""
+        return self.game_mode == GameMode.GAME_OVER
+
+    def is_menu(self):
+        """Check if in menu mode."""
+        return self.game_mode == GameMode.MENU
+
+    def is_countdown(self):
+        """Check if in countdown mode."""
+        return self.game_mode == GameMode.COUNTDOWN
+
+    def get_countdown_value(self):
+        """Get current countdown value (3, 2, 1, or 0 for GO)."""
+        if self.game_mode != GameMode.COUNTDOWN:
+            return None
+        elapsed = time.time() - self.countdown_start_time
+        if elapsed < 1.0:
+            return 3
+        elif elapsed < 2.0:
+            return 2
+        elif elapsed < 3.0:
+            return 1
+        elif elapsed < 3.5:
+            return 0  # GO!
+        else:
+            # Countdown finished, start playing
+            self.begin_playing()
+            return None
+
+    def _load_high_score(self):
+        """Load high score from file."""
+        try:
+            if os.path.exists(self.high_score_file):
+                with open(self.high_score_file, 'r') as f:
+                    data = json.load(f)
+                    self.high_score = data.get('high_score', 0)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Could not load high score: {e}")
+            self.high_score = 0
+
+    def _check_and_save_high_score(self):
+        """Check if current score is a high score and save if it is."""
+        if self.score > self.high_score:
+            self.high_score = self.score
+            self._save_high_score()
+
+    def _save_high_score(self):
+        """Save high score to file."""
+        try:
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(self.high_score_file), exist_ok=True)
+
+            data = {
+                'high_score': self.high_score,
+                'timestamp': time.time()
+            }
+            with open(self.high_score_file, 'w') as f:
+                json.dump(data, f, indent=2)
+        except IOError as e:
+            print(f"Could not save high score: {e}")
+
+    def get_high_score(self):
+        """Get the current high score."""
+        return self.high_score
+
+    def is_new_high_score(self):
+        """Check if the current score is a new high score."""
+        return self.score == self.high_score and self.score > 0
