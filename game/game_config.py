@@ -35,8 +35,8 @@ STRATEGY_UI_START_Y = 40   # Starting Y position for first strategy UI element
 STRATEGY_UI_LINE_HEIGHT = 30  # Vertical spacing between UI elements
 
 # Camera Settings
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
+CAMERA_WIDTH = 1280
+CAMERA_HEIGHT = 720
 CAMERA_INDEX = 0  # Default camera device index
 
 # Flask Server Settings

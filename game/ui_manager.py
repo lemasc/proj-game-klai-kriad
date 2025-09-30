@@ -124,11 +124,11 @@ class UIManager:
 
         # Title
         title = "PUNCH DETECTION GAME"
-        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_BOLD, 1.5, 3)[0]
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)[0]
         title_x = (width - title_size[0]) // 2
         title_y = height // 3
         cv2.putText(image, title, (title_x, title_y),
-                   cv2.FONT_HERSHEY_BOLD, 1.5, (255, 255, 255), 3)
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
 
         # High score display
         high_score_text = f"High Score: {game_state.get_high_score()}"
@@ -178,11 +178,11 @@ class UIManager:
                 font_scale = 4.0
 
             # Draw countdown number/text
-            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_BOLD, font_scale, 5)[0]
+            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 5)[0]
             text_x = (width - text_size[0]) // 2
             text_y = (height + text_size[1]) // 2
             cv2.putText(image, text, (text_x, text_y),
-                       cv2.FONT_HERSHEY_BOLD, font_scale, color, 5)
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 5)
 
     def _draw_game_over_screen(self, image, game_state, width, height):
         """Draw the game over screen with final stats."""
@@ -193,20 +193,20 @@ class UIManager:
 
         # Game Over title
         title = "TIME'S UP!"
-        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_BOLD, 2.0, 4)[0]
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_SIMPLEX, 2.0, 4)[0]
         title_x = (width - title_size[0]) // 2
         title_y = height // 4
         cv2.putText(image, title, (title_x, title_y),
-                   cv2.FONT_HERSHEY_BOLD, 2.0, (0, 0, 255), 4)
+                   cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 255), 4)
 
         # High score indicator if new record
         if game_state.is_new_high_score():
             new_record = "NEW HIGH SCORE!"
-            record_size = cv2.getTextSize(new_record, cv2.FONT_HERSHEY_BOLD, 1.2, 3)[0]
+            record_size = cv2.getTextSize(new_record, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
             record_x = (width - record_size[0]) // 2
             record_y = height // 4 + 60
             cv2.putText(image, new_record, (record_x, record_y),
-                       cv2.FONT_HERSHEY_BOLD, 1.2, (0, 255, 0), 3)
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
 
         # Final stats
         stats = [
