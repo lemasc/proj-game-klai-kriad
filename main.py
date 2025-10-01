@@ -14,6 +14,7 @@ from detection.pose.pose_strategy import PoseStrategy
 from game.game_state import GameState
 from game.ui_manager import UIManager
 from game.event_manager import EventManager
+from evaluation.recording_manager import RecordingManager
 
 class PunchDetectionGame:
     def __init__(self):
@@ -24,7 +25,7 @@ class PunchDetectionGame:
         self.cap = None
 
         # Game state
-        self.game_state = GameState()
+        self.game_state = GameState(self.event_manager)
 
         # UI Manager
         self.ui_manager = UIManager()
@@ -32,8 +33,15 @@ class PunchDetectionGame:
         # FusionDetector now uses event system
         self.fusion_detector = FusionDetector(self.event_manager)
 
+        # Recording manager for evaluation
+        self.recording_manager = RecordingManager(self.event_manager)
+        self.evaluation_mode = False
+
         # Initialize detection strategies
         self._init_strategies()
+
+        # Setup event listeners for evaluation mode
+        self._setup_evaluation_listeners()
 
         print("Detection strategies initialized")
         print("Open the smartphone web interface to connect accelerometer")
@@ -56,6 +64,54 @@ class PunchDetectionGame:
     def _get_game_state(self):
         """Provide current game state for the sensor server"""
         return self.game_state.get_state_dict()
+
+    def _setup_evaluation_listeners(self):
+        """Setup event listeners for automatic recording in evaluation mode."""
+        # Listen for game state changes to auto-start/stop recording
+        self.event_manager.register_hook('game_mode_changed', self._on_game_mode_changed)
+
+    def _on_game_mode_changed(self, new_mode):
+        """Handle game mode changes for automatic recording.
+
+        Args:
+            new_mode: The new game mode (GameMode enum)
+        """
+        from game.game_state import GameMode
+
+        if not self.evaluation_mode:
+            return
+
+        # Start recording when entering PLAYING mode
+        if new_mode == GameMode.PLAYING:
+            if not self.recording_manager.is_recording():
+                resolution = (CAMERA_WIDTH, CAMERA_HEIGHT)
+                fps = 30  # TODO: Get actual FPS from camera
+                detection_config = {
+                    'accel_threshold': ACCEL_PUNCH_THRESHOLD,
+                    'visual_threshold': VISUAL_PUNCH_THRESHOLD,
+                    'accel_weight': ACCEL_WEIGHT,
+                    'visual_weight': VISUAL_WEIGHT
+                }
+                self.recording_manager.start_recording(resolution, fps, detection_config)
+                print("📹 Recording started (evaluation mode)")
+
+        # Stop recording when leaving PLAYING mode (game over or return to menu)
+        elif new_mode in (GameMode.GAME_OVER, GameMode.MENU):
+            if self.recording_manager.is_recording():
+                session_dir = self.recording_manager.stop_recording()
+                if session_dir:
+                    print(f"💾 Recording saved: {session_dir}")
+
+    def toggle_evaluation_mode(self):
+        """Toggle evaluation mode on/off."""
+        self.evaluation_mode = not self.evaluation_mode
+        status = "ENABLED" if self.evaluation_mode else "DISABLED"
+        print(f"🔬 Evaluation Mode {status}")
+
+        # Stop any active recording if disabling evaluation mode
+        if not self.evaluation_mode and self.recording_manager.is_recording():
+            self.recording_manager.stop_recording()
+            print("Recording stopped (evaluation mode disabled)")
     
     def register_punch(self, score, timestamp):
         """Register a successful punch and update game state"""
@@ -118,7 +174,13 @@ class PunchDetectionGame:
                 self.event_manager.trigger_event('draw_overlays', frame)
 
                 # Draw core game UI (score, combo, instructions, effects)
-                self.ui_manager.draw_game_ui(frame, self.game_state)
+                self.ui_manager.draw_game_ui(
+                    frame,
+                    self.game_state,
+                    evaluation_mode=self.evaluation_mode,
+                    is_recording=self.recording_manager.is_recording(),
+                    recording_time=self.recording_manager.get_recording_time()
+                )
 
                 # Trigger strategy UI drawing with position context for chaining
                 draw_context = {'next_y': STRATEGY_UI_START_Y, 'x': STRATEGY_UI_START_X}
@@ -126,6 +188,10 @@ class PunchDetectionGame:
 
                 # Display frame
                 cv2.imshow('Punch Detection Game', frame)
+
+                # Pass frame to recording manager
+                if self.recording_manager.is_recording():
+                    self.recording_manager.record_frame(frame)
 
                 # Handle keyboard input
                 key = cv2.waitKey(1) & 0xFF
@@ -140,6 +206,9 @@ class PunchDetectionGame:
                     # Return to menu / restart
                     self.game_state.return_to_menu()
                     print("Returned to menu")
+                elif key == ord('e'):
+                    # Toggle evaluation mode
+                    self.toggle_evaluation_mode()
                 elif key == ord(' '):
                     # Manual punch trigger for testing (only during PLAYING)
                     if self.game_state.is_playing():
@@ -149,6 +218,9 @@ class PunchDetectionGame:
             print("\nGame interrupted by user")
 
         finally:
+            # Cleanup recording if active
+            self.recording_manager.cleanup()
+
             # Trigger cleanup event for all components
             self.event_manager.trigger_event('cleanup')
             if self.cap:

@@ -19,13 +19,16 @@ class UIManager:
         self.punch_effect_timer = 0
         self.punch_effect_duration = PUNCH_EFFECT_DURATION
 
-    def draw_game_ui(self, image, game_state):
+    def draw_game_ui(self, image, game_state, evaluation_mode=False, is_recording=False, recording_time=0.0):
         """
         Draw complete game UI on the provided image.
 
         Args:
             image: OpenCV image/frame to draw on
             game_state: GameState instance with current game data
+            evaluation_mode: Whether evaluation mode is active
+            is_recording: Whether recording is active
+            recording_time: Current recording duration in seconds
 
         Returns:
             None (modifies image in place)
@@ -46,6 +49,9 @@ class UIManager:
             self._draw_timer(image, game_state, width)
             self._draw_punch_effects(image, width, height)
             self._draw_instructions(image, game_state, height)
+
+        # Always draw evaluation/recording indicators (across all screens)
+        self._draw_evaluation_indicators(image, evaluation_mode, is_recording, recording_time)
 
     def _draw_ui_background(self, image):
         """Draw the UI panel background."""
@@ -141,6 +147,7 @@ class UIManager:
         # Instructions
         instructions = [
             "Press 'S' to START",
+            "Press 'E' to toggle EVALUATION MODE",
             "",
             "Connect your smartphone to begin",
             "Punch as many times as you can in 15 seconds!",
@@ -254,3 +261,35 @@ class UIManager:
         text_x = width - text_size[0] - 20
         cv2.putText(image, timer_text, (text_x, 40),
                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
+
+    def _draw_evaluation_indicators(self, image, evaluation_mode, is_recording, recording_time):
+        """Draw evaluation mode and recording indicators.
+
+        Args:
+            image: OpenCV image/frame to draw on
+            evaluation_mode: Whether evaluation mode is active
+            is_recording: Whether recording is active
+            recording_time: Current recording duration in seconds
+        """
+        y_offset = 30
+        x_pos = 30
+
+        # Draw evaluation mode indicator
+        if evaluation_mode:
+            eval_text = "[EVAL MODE]"
+            cv2.putText(image, eval_text, (x_pos, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)  # Orange
+            y_offset += 30
+
+        # Draw recording indicator (red dot + timer)
+        if is_recording:
+            # Blinking red dot (blinks every 0.5 seconds)
+            if int(recording_time * 2) % 2 == 0:
+                cv2.circle(image, (x_pos + 5, y_offset - 5), 8, (0, 0, 255), -1)  # Red dot
+
+            # Recording timer
+            minutes = int(recording_time // 60)
+            seconds = int(recording_time % 60)
+            rec_text = f"REC {minutes:02d}:{seconds:02d}"
+            cv2.putText(image, rec_text, (x_pos + 20, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)  # Red text

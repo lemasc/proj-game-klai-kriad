@@ -22,8 +22,13 @@ class GameState:
     Provides methods for updating state and retrieving current status.
     """
 
-    def __init__(self):
-        """Initialize game state with default values."""
+    def __init__(self, event_manager=None):
+        """Initialize game state with default values.
+
+        Args:
+            event_manager: Optional event manager for triggering game mode changes
+        """
+        self.event_manager = event_manager
         self.score = 0
         self.punch_count = 0
         self.combo_count = 0
@@ -165,6 +170,7 @@ class GameState:
         self.game_mode = GameMode.COUNTDOWN
         self.countdown_start_time = time.time()
         self.reset_score()
+        self._trigger_mode_changed()
 
     def start_countdown(self):
         """Alias for start_game for clarity."""
@@ -175,6 +181,7 @@ class GameState:
         self.game_mode = GameMode.PLAYING
         self.game_start_time = time.time()
         self.game_timer = 0
+        self._trigger_mode_changed()
 
     def update_timer(self):
         """Update game timer and check for game over."""
@@ -188,11 +195,13 @@ class GameState:
         self.game_mode = GameMode.GAME_OVER
         self.game_timer = self.game_duration
         self._check_and_save_high_score()
+        self._trigger_mode_changed()
 
     def return_to_menu(self):
         """Return to menu screen."""
         self.game_mode = GameMode.MENU
         self.reset_score()
+        self._trigger_mode_changed()
 
     def get_remaining_time(self):
         """Get remaining time in seconds."""
@@ -273,3 +282,8 @@ class GameState:
     def is_new_high_score(self):
         """Check if the current score is a new high score."""
         return self.score == self.high_score and self.score > 0
+
+    def _trigger_mode_changed(self):
+        """Trigger game_mode_changed event if event manager is available."""
+        if self.event_manager:
+            self.event_manager.trigger_event('game_mode_changed', self.game_mode)

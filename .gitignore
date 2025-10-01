@@ -4,3 +4,4 @@ __pycache__/
 *.env
 !.env.example
 game/high_score.json
+recordings/
