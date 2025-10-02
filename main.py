@@ -51,7 +51,8 @@ class PunchDetectionGame:
         # Initialize accelerometer strategy (handles sensor data internally)
         self.accelerometer_strategy = AccelerometerStrategy(
             event_manager=self.event_manager,
-            game_state_provider=self._get_game_state
+            game_state_provider=self._get_game_state,
+            recording_manager=self.recording_manager
         )
 
         # Initialize pose strategy

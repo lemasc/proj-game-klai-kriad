@@ -29,6 +29,7 @@ class RecordingManager:
         # Buffers for JSONL files
         self.detection_buffer: List[Dict] = []
         self.sensor_buffer: List[Dict] = []
+        self.ground_truth_buffer: List[Dict] = []
 
         # Metadata tracking
         self.session_metadata: Dict[str, Any] = {}
@@ -101,6 +102,7 @@ class RecordingManager:
         # Clear buffers
         self.detection_buffer.clear()
         self.sensor_buffer.clear()
+        self.ground_truth_buffer.clear()
 
         self.is_recording_flag = True
         print(f"Recording started: {session_id}")
@@ -118,6 +120,7 @@ class RecordingManager:
         # Flush buffers
         self._flush_detections()
         self._flush_sensor_data()
+        self._flush_ground_truth()
 
         # Release video writer
         if self.video_writer:
@@ -257,6 +260,43 @@ class RecordingManager:
                 f.write(json.dumps(sensor) + '\n')
 
         self.sensor_buffer.clear()
+
+    def record_ground_truth(self, hand: str, server_timestamp: float):
+        """Record a ground truth event from peer observation.
+
+        Args:
+            hand: Which hand punched ('left' or 'right')
+            server_timestamp: Server-side timestamp (time.time())
+        """
+        if not self.is_recording_flag:
+            return
+
+        # Calculate relative timestamp
+        timestamp = server_timestamp - self.start_time if self.start_time else 0
+
+        ground_truth_record = {
+            "timestamp": round(timestamp, 3),
+            "hand": hand,
+            "source": "peer"
+        }
+
+        self.ground_truth_buffer.append(ground_truth_record)
+
+        # Flush buffer if full
+        if len(self.ground_truth_buffer) >= config.BUFFER_SIZE:
+            self._flush_ground_truth()
+
+    def _flush_ground_truth(self):
+        """Write ground truth buffer to file."""
+        if not self.ground_truth_buffer or not self.session_dir:
+            return
+
+        ground_truth_path = self.session_dir / "ground_truth.jsonl"
+        with open(ground_truth_path, 'a') as f:
+            for record in self.ground_truth_buffer:
+                f.write(json.dumps(record) + '\n')
+
+        self.ground_truth_buffer.clear()
 
     def is_recording(self) -> bool:
         """Check if currently recording.

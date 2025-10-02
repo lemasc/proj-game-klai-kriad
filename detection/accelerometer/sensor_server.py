@@ -11,7 +11,7 @@ import qrcode
 class SensorServer:
     """Flask-SocketIO server for receiving sensor data from smartphone via WebSocket"""
 
-    def __init__(self, sensor_data_callback, game_state_provider, config):
+    def __init__(self, sensor_data_callback, game_state_provider, config, recording_manager=None):
         """
         Initialize sensor server
 
@@ -19,10 +19,12 @@ class SensorServer:
             sensor_data_callback: Function to call when sensor data is received
             game_state_provider: Function that returns current game state dict
             config: Configuration object with server settings
+            recording_manager: Optional RecordingManager instance for ground truth logging
         """
         self.sensor_data_callback = sensor_data_callback
         self.game_state_provider = game_state_provider
         self.config = config
+        self.recording_manager = recording_manager
 
         # Flask app setup
         self.app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '../../templates'))
@@ -88,6 +90,28 @@ class SensorServer:
             except Exception as e:
                 print(f"Error receiving sensor data: {e}")
                 emit('sensor_ack', {'status': 'error'})
+
+        @self.socketio.on('ground_truth')
+        def handle_ground_truth(data):
+            try:
+                if data and 'hand' in data:
+                    # Capture server-side timestamp
+                    server_timestamp = time.time()
+
+                    # Forward to recording manager if available
+                    if self.recording_manager:
+                        self.recording_manager.record_ground_truth(
+                            hand=data['hand'],
+                            server_timestamp=server_timestamp
+                        )
+                        emit('ground_truth_ack', {'status': 'ok'})
+                    else:
+                        emit('ground_truth_ack', {'status': 'error', 'message': 'Recording not available'})
+                else:
+                    emit('ground_truth_ack', {'status': 'error', 'message': 'Invalid data'})
+            except Exception as e:
+                print(f"Error receiving ground truth: {e}")
+                emit('ground_truth_ack', {'status': 'error', 'message': str(e)})
 
         @self.socketio.on('get_status')
         def handle_get_status():

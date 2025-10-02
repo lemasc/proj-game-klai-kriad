@@ -164,6 +164,61 @@
             transform: scale(1.2);
             box-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
         }
+
+        .ground-truth-section {
+            margin-top: 30px;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .ground-truth-section h2 {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .ground-truth-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .ground-truth-button {
+            background: linear-gradient(45deg, #4caf50, #66bb6a);
+            border: none;
+            color: white;
+            padding: 40px 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .ground-truth-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .ground-truth-button:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 30px rgba(76, 175, 80, 0.6);
+        }
+
+        .ground-truth-button.pressed {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+            box-shadow: 0 0 40px rgba(255, 107, 107, 0.8);
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body>
@@ -218,6 +273,21 @@
         </div>
     </div>
 
+    <div class="ground-truth-section" id="groundTruthSection" style="display: none;">
+        <h2>⭐ Ground Truth Recording</h2>
+        <p style="margin-bottom: 20px; opacity: 0.9;">
+            Press the button when you observe a punch
+        </p>
+        <div class="ground-truth-buttons">
+            <button class="ground-truth-button" id="leftGroundTruth">
+                ← LEFT
+            </button>
+            <button class="ground-truth-button" id="rightGroundTruth">
+                RIGHT →
+            </button>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script>
         class PunchSensor {
@@ -243,6 +313,11 @@
                 this.gameScoreSpan = document.getElementById('gameScore');
                 this.connectionStatusSpan = document.getElementById('connectionStatus');
 
+                // Ground truth elements
+                this.groundTruthSection = document.getElementById('groundTruthSection');
+                this.leftGroundTruthButton = document.getElementById('leftGroundTruth');
+                this.rightGroundTruthButton = document.getElementById('rightGroundTruth');
+
                 this.setupEventListeners();
                 this.loadSavedIP();
             }
@@ -254,12 +329,14 @@
                     console.log('WebSocket connected');
                     this.updateStatus('Connected & Tracking', 'connected');
                     this.connectionStatusSpan.textContent = '✅';
+                    this.groundTruthSection.style.display = 'block';
                 });
 
                 this.socket.on('disconnect', () => {
                     console.log('WebSocket disconnected');
                     this.updateStatus('Disconnected', 'disconnected');
                     this.connectionStatusSpan.textContent = '❌';
+                    this.groundTruthSection.style.display = 'none';
                 });
 
                 this.socket.on('status', (data) => {
@@ -285,10 +362,18 @@
 
             setupEventListeners() {
                 this.startButton.addEventListener('click', () => this.toggleTracking());
-                
+
                 // Save IP when changed
                 this.serverIPInput.addEventListener('input', () => {
                     localStorage.setItem('punchSensorIP', this.serverIPInput.value);
+                });
+
+                // Ground truth button listeners
+                this.leftGroundTruthButton.addEventListener('click', () => {
+                    this.sendGroundTruth('left');
+                });
+                this.rightGroundTruthButton.addEventListener('click', () => {
+                    this.sendGroundTruth('right');
                 });
             }
             
@@ -382,6 +467,7 @@
                 this.startButton.textContent = 'Start Tracking';
                 this.updateStatus('Disconnected', 'disconnected');
                 this.metricsDiv.style.display = 'none';
+                this.groundTruthSection.style.display = 'none';
                 this.connectionStatusSpan.textContent = '❌';
             }
             
@@ -435,8 +521,32 @@
                     this.punchIndicator.classList.remove('punching');
                 }, 300);
             }
+
+            sendGroundTruth(hand) {
+                if (!this.socket || !this.isTracking) {
+                    console.warn('Cannot send ground truth: not connected');
+                    return;
+                }
+
+                // Send ground truth event via WebSocket
+                const groundTruthData = {
+                    hand: hand,
+                    timestamp: Date.now()
+                };
+
+                this.socket.emit('ground_truth', groundTruthData);
+
+                // Visual feedback
+                const button = hand === 'left' ? this.leftGroundTruthButton : this.rightGroundTruthButton;
+                button.classList.add('pressed');
+                setTimeout(() => {
+                    button.classList.remove('pressed');
+                }, 200);
+
+                console.log('Ground truth sent:', hand);
+            }
         }
-        
+
         // Initialize the sensor when page loads
         document.addEventListener('DOMContentLoaded', () => {
             new PunchSensor();

@@ -35,17 +35,19 @@ class AccelerometerStrategy(BaseDetectionStrategy):
     for punch detection. Results are stored internally and accessed by FusionDetector.
     """
 
-    def __init__(self, event_manager: EventManager, game_state_provider=None):
+    def __init__(self, event_manager: EventManager, game_state_provider=None, recording_manager=None):
         """
         Initialize accelerometer strategy.
 
         Args:
             event_manager: Event manager for registering hooks
             game_state_provider: Function that returns current game state
+            recording_manager: Optional RecordingManager instance for ground truth logging
         """
         self.sensor_server: Optional[SensorServer] = None
         self.motion_analyzer: Optional[MotionAnalyzer] = None
         self.game_state_provider = game_state_provider
+        self.recording_manager = recording_manager
 
         # Internal sensor data queue and buffer
         self.sensor_queue = queue.Queue()
@@ -83,7 +85,8 @@ class AccelerometerStrategy(BaseDetectionStrategy):
             self.sensor_server = SensorServer(
                 sensor_data_callback=self._handle_sensor_data,
                 game_state_provider=self.game_state_provider or self._default_game_state_provider,
-                config=ServerConfig()
+                config=ServerConfig(),
+                recording_manager=self.recording_manager
             )
             self.sensor_server.start()
             print("AccelerometerStrategy: Sensor server started")
