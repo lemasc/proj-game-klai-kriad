@@ -94,7 +94,7 @@ def match_events(
     ground_truth: List[PunchEvent],
     match_window: float = 0.3,
     offset: float = 0.0
-) -> Tuple[List[MatchResult], List[PunchEvent], int, int, int]:
+) -> Tuple[List[MatchResult], List[PunchEvent], int, int, int, int]:
     """Match ground truth events with detections within a time window.
 
     Args:
@@ -104,7 +104,7 @@ def match_events(
         offset: Time offset to apply to ground truth (seconds)
 
     Returns:
-        Tuple of (matched_results, unmatched_detections, TP, FP, FN)
+        Tuple of (matched_results, unmatched_detections, TP, FP, FN, TN)
     """
     # Apply offset to ground truth timestamps
     adjusted_ground_truth = [
@@ -160,11 +160,17 @@ def match_events(
     false_negatives = sum(1 for mr in matched_results if mr.matched_detection is None)
     false_positives = len(unmatched_detections)
 
-    return matched_results, unmatched_detections, true_positives, false_positives, false_negatives
+    # True Negatives: In event detection, TN is typically considered as 0
+    # since we only track positive events (punches). TN would represent
+    # "correctly not detecting a punch when there was no punch", but we
+    # don't explicitly track non-punch moments.
+    true_negatives = 0
+
+    return matched_results, unmatched_detections, true_positives, false_positives, false_negatives, true_negatives
 
 
 def calculate_metrics(tp: int, fp: int, fn: int) -> Dict[str, float]:
-    """Calculate precision, recall, and F1 score.
+    """Calculate precision, recall, accuracy, and F1 score.
 
     Args:
         tp: True positives
@@ -172,15 +178,21 @@ def calculate_metrics(tp: int, fp: int, fn: int) -> Dict[str, float]:
         fn: False negatives
 
     Returns:
-        Dictionary with precision, recall, and F1 score
+        Dictionary with precision, recall, accuracy, and F1 score
     """
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
+    # Accuracy = TP / (TP + FP + FN)
+    # This represents the ratio of correctly detected punches to all events (detected or missed)
+    total_events = tp + fp + fn
+    accuracy = tp / total_events if total_events > 0 else 0.0
+
     return {
         'precision': precision,
         'recall': recall,
+        'accuracy': accuracy,
         'f1_score': f1
     }
 
@@ -192,6 +204,7 @@ def generate_report(
     tp: int,
     fp: int,
     fn: int,
+    tn: int,
     metrics: Dict[str, float],
     match_window: float,
     offset: float
@@ -205,6 +218,7 @@ def generate_report(
         tp: True positives
         fp: False positives
         fn: False negatives
+        tn: True negatives
         metrics: Calculated metrics
         match_window: Match window used
         offset: Offset used
@@ -215,19 +229,29 @@ def generate_report(
     report = []
     report.append(f"# Ground Truth Comparison Report\n")
     report.append(f"**Session**: `{session_dir.name}`\n")
-    report.append(f"**Match Window**: ±{match_window}s\n")
+    report.append(f"**Match Window**: +/-{match_window}s\n")
     report.append(f"**Time Offset**: {offset:+.3f}s\n")
     report.append("")
 
     # Summary metrics
     report.append("## Summary Metrics\n")
+    report.append(f"- **Accuracy**: {metrics['accuracy']:.2%} ({tp}/{tp+fp+fn} total events were correct)")
     report.append(f"- **Precision**: {metrics['precision']:.2%} ({tp}/{tp+fp} detections were correct)")
     report.append(f"- **Recall**: {metrics['recall']:.2%} ({tp}/{tp+fn} ground truth events were detected)")
     report.append(f"- **F1 Score**: {metrics['f1_score']:.3f}")
     report.append("")
-    report.append(f"- **True Positives (TP)**: {tp}")
-    report.append(f"- **False Positives (FP)**: {fp}")
-    report.append(f"- **False Negatives (FN)**: {fn}")
+
+    # Confusion Matrix
+    report.append("## Confusion Matrix\n")
+    report.append("| | Predicted Positive | Predicted Negative |")
+    report.append("|---|---|---|")
+    report.append(f"| **Actual Positive** | TP = {tp} | FN = {fn} |")
+    report.append(f"| **Actual Negative** | FP = {fp} | TN = {tn} |")
+    report.append("")
+    report.append(f"- **True Positives (TP)**: {tp} - Correctly detected punches")
+    report.append(f"- **False Positives (FP)**: {fp} - Incorrect detections (false alarms)")
+    report.append(f"- **False Negatives (FN)**: {fn} - Missed punches")
+    report.append(f"- **True Negatives (TN)**: {tn} - Not applicable for event detection")
     report.append("")
 
     # Matched events
@@ -371,8 +395,8 @@ def main():
         return 1
 
     # Match events
-    print(f"Matching events (window: ±{args.match_window}s, offset: {args.offset:+.3f}s)...")
-    matched_results, unmatched_detections, tp, fp, fn = match_events(
+    print(f"Matching events (window: +/-{args.match_window}s, offset: {args.offset:+.3f}s)...")
+    matched_results, unmatched_detections, tp, fp, fn, tn = match_events(
         detections,
         ground_truth,
         match_window=args.match_window,
@@ -387,7 +411,7 @@ def main():
         args.session,
         matched_results,
         unmatched_detections,
-        tp, fp, fn,
+        tp, fp, fn, tn,
         metrics,
         args.match_window,
         args.offset
@@ -403,9 +427,10 @@ def main():
         print("="*80)
 
     # Print quick summary
-    print(f"\n✓ Precision: {metrics['precision']:.2%}")
-    print(f"✓ Recall: {metrics['recall']:.2%}")
-    print(f"✓ F1 Score: {metrics['f1_score']:.3f}")
+    print(f"\n[Check] Accuracy: {metrics['accuracy']:.2%}")
+    print(f"[Check] Precision: {metrics['precision']:.2%}")
+    print(f"[Check] Recall: {metrics['recall']:.2%}")
+    print(f"[Check] F1 Score: {metrics['f1_score']:.3f}")
 
     return 0
 

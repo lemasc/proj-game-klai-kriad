@@ -56,6 +56,30 @@ class SensorServer:
         def index():
             return render_template('index.html')
 
+        @self.app.route('/ground_truth', methods=['POST'])
+        def ground_truth():
+            """HTTP endpoint for ground truth events (independent of WebSocket)"""
+            try:
+                data = request.get_json()
+                if data and 'hand' in data:
+                    # Capture server-side timestamp
+                    server_timestamp = time.time()
+
+                    # Forward to recording manager if available
+                    if self.recording_manager:
+                        self.recording_manager.record_ground_truth(
+                            hand=data['hand'],
+                            server_timestamp=server_timestamp
+                        )
+                        return {'status': 'ok'}, 200
+                    else:
+                        return {'status': 'error', 'message': 'Recording not available'}, 503
+                else:
+                    return {'status': 'error', 'message': 'Invalid data'}, 400
+            except Exception as e:
+                print(f"Error receiving ground truth: {e}")
+                return {'status': 'error', 'message': str(e)}, 500
+
     def _setup_socket_handlers(self):
         """Setup SocketIO event handlers"""
 

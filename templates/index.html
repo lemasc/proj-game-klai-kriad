@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Punch Detection Sensor</title>
     <style>
         body {
@@ -16,6 +16,8 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            touch-action: pan-x pan-y;
+            overflow-x: hidden;
         }
         
         .container {
@@ -320,6 +322,8 @@
 
                 this.setupEventListeners();
                 this.loadSavedIP();
+                // Show ground truth buttons immediately
+                this.groundTruthSection.style.display = 'block';
             }
 
             setupSocketEvents() {
@@ -329,14 +333,12 @@
                     console.log('WebSocket connected');
                     this.updateStatus('Connected & Tracking', 'connected');
                     this.connectionStatusSpan.textContent = '✅';
-                    this.groundTruthSection.style.display = 'block';
                 });
 
                 this.socket.on('disconnect', () => {
                     console.log('WebSocket disconnected');
                     this.updateStatus('Disconnected', 'disconnected');
                     this.connectionStatusSpan.textContent = '❌';
-                    this.groundTruthSection.style.display = 'none';
                 });
 
                 this.socket.on('status', (data) => {
@@ -467,7 +469,6 @@
                 this.startButton.textContent = 'Start Tracking';
                 this.updateStatus('Disconnected', 'disconnected');
                 this.metricsDiv.style.display = 'none';
-                this.groundTruthSection.style.display = 'none';
                 this.connectionStatusSpan.textContent = '❌';
             }
             
@@ -522,19 +523,12 @@
                 }, 300);
             }
 
-            sendGroundTruth(hand) {
-                if (!this.socket || !this.isTracking) {
-                    console.warn('Cannot send ground truth: not connected');
-                    return;
-                }
-
-                // Send ground truth event via WebSocket
+            async sendGroundTruth(hand) {
+                // Send ground truth event via HTTP POST
                 const groundTruthData = {
                     hand: hand,
                     timestamp: Date.now()
                 };
-
-                this.socket.emit('ground_truth', groundTruthData);
 
                 // Visual feedback
                 const button = hand === 'left' ? this.leftGroundTruthButton : this.rightGroundTruthButton;
@@ -543,7 +537,24 @@
                     button.classList.remove('pressed');
                 }, 200);
 
-                console.log('Ground truth sent:', hand);
+                try {
+                    const serverURL = this.serverURL || window.location.origin;
+                    const response = await fetch(`${serverURL}/ground_truth`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(groundTruthData)
+                    });
+
+                    if (response.ok) {
+                        console.log('Ground truth sent:', hand);
+                    } else {
+                        console.error('Failed to send ground truth:', response.status);
+                    }
+                } catch (error) {
+                    console.error('Error sending ground truth:', error);
+                }
             }
         }
 
